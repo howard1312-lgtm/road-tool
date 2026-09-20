@@ -348,6 +348,11 @@ body.mode-field .wrap{display:none}
 .fm-prev img{display:block;width:100%;height:auto}
 .fm-prev .bad{color:var(--fm-bad);font-weight:700;padding:10px}
 #fm .fm-sheet .acts button:disabled{opacity:.45}
+#fm .fm-hide{flex:none;min-height:34px;font-size:13px;padding:0 8px;border-color:var(--rule);color:var(--ink-soft)}
+#fm .fm-expand{width:100%;min-height:52px;display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:var(--fm-hl);color:#fff;border:1px solid var(--fm-hl);text-align:left}
+#fm .fm-expand span{font-weight:700;font-size:16px;flex:none}
+#fm .fm-expand small{font-size:14px;opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fm-pk{padding:30px 16px;text-align:center;color:var(--ink-soft);line-height:1.7}
 </style>
 </head>
@@ -617,7 +622,8 @@ const TXTDY = {label:0, num:0};
 /* 法規檢核人工覆寫：{checkId: 'pass'|'off'} */
 const CHECK_OVERRIDE = {};
 let EXPORT_MODE = false;     // 匯出時為 true：隱藏法規未達標的紅色標示
-let LINE_ARROWS = false;     // 為 true 時線條式也畫車道行向箭頭（僅現勘 JPG 使用，送審圖不受影響）
+let LINE_ARROWS = false;
+let LINE_DEC = 1;            // 線條式數字的小數位數（送審圖 1 位；現勘 JPG 依專案設定暫時改變）     // 為 true 時線條式也畫車道行向箭頭（僅現勘 JPG 使用，送審圖不受影響）
 let suppressTable = false;   // 為 true 時 render() 不重建明細表（用於調色即時預覽）
 /* 斷面名稱（對應儲存的配置名稱），繪於圖面最上方 */
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -772,6 +778,17 @@ const ARROW_TURN_NAME = {straight:'直',left:'左',right:'右',straight_left:'�
 
 /* 是否為轉向專用車道（僅左轉或僅右轉，不含直行） */
 const isTurnOnly = s => s.kind==='lane' && ['left','right','left_right'].includes(s.turn || 'straight');
+/* 車道行向：up 往前（遠離觀者）／down 往後（朝向觀者）／both 雙向（無分向線巷弄，畫兩個箭頭） */
+const DIR_CYCLE = {up:'down', down:'both', both:'up'};
+const nextLaneDir = d => DIR_CYCLE[d || 'up'] || 'up';
+const DIR_LABEL = {up:'↑前', down:'↓後', both:'⇅雙向'};
+function laneArrowSlots(s, cx, w){
+  if(s.dir === 'both'){
+    const off = Math.min(w/4, 34), maxw = Math.max(Math.min(w/2, 2*off) - 6, 6);
+    return [{d:'down', acx:cx - off, maxw}, {d:'up', acx:cx + off, maxw}];
+  }
+  return [{d: s.dir === 'down' ? 'down' : 'up', acx:cx, maxw:Math.max(w - 8, 8)}];
+}
 
 /* ═══════ 法定最小寬度（回傳 {min, cite} 或 null＝無法定值） ═══════ */
 function legalMin(kind, seg, tot){
@@ -800,16 +817,11 @@ const CLEAR_KINDS = ['sidewalk','markedwalk','arcade','bike'];          // 人�
 const STALL_KINDS = ['carstall','motostall'];
 const hasClear = s => CLEAR_KINDS.includes(s.kind) && typeof s.clearW === 'number' && s.clearW > 0;
 const chkW = s => hasClear(s) ? s.clearW : s.w;                          // 法規檢核用寬度：有淨寬用淨寬
-const DITCH_NEIGH = ['sidewalk','markedwalk','arcade','bike','curb'];    // 判斷側溝在哪一側的相鄰元素
-/* 含側溝停車格的側溝位置：手動 L/R 優先；否則看哪一側緊鄰人行道類／路緣／騎樓；
-   兩側皆無（或皆有）時，位於斷面左半者靠左、右半者靠右 */
+/* 含側溝停車格的側溝位置：手動 L/R 優先；否則預設在斷面外側（位於左半靠左、右半靠右）。
+   寬度全部已知時以寬度判斷位置，否則以項目序位判斷 */
 function stallDitchSide(arr, i){
   const s = arr[i];
   if(s.ditchSide === 'L' || s.ditchSide === 'R') return s.ditchSide;
-  const l = arr[i-1], r = arr[i+1];
-  const lp = !!(l && DITCH_NEIGH.includes(l.kind)), rp = !!(r && DITCH_NEIGH.includes(r.kind));
-  if(lp && !rp) return 'L';
-  if(rp && !lp) return 'R';
   const allW = arr.length && arr.every(x => x.w > 0);
   let mid, half;
   if(allW){
@@ -1070,9 +1082,9 @@ function renderLineStyle(){
   const meta = segs.map((s)=>{
     const w = s.w*scale;
     const cx = x + w/2; x += w;
-    let num = s.w.toFixed(1);
-    if(hasClear(s)) num += `（淨${s.clearW.toFixed(1)}）`;
-    if(STALL_KINDS.includes(s.kind) && s.inclDitch) num += (s.ditchW > 0 ? `（含側溝${s.ditchW.toFixed(1)}）` : '（含側溝）');
+    let num = s.w.toFixed(LINE_DEC);
+    if(hasClear(s)) num += `（淨${s.clearW.toFixed(LINE_DEC)}）`;
+    if(STALL_KINDS.includes(s.kind) && s.inclDitch) num += (s.ditchW > 0 ? `（含側溝${s.ditchW.toFixed(LINE_DEC)}）` : '（含側溝）');
     return {s, w, cx, num};
   });
   x = PAD;
@@ -1095,7 +1107,7 @@ function renderLineStyle(){
   // 斷面名稱（最上方）
   parts.push(titleText(W/2, RULE_Y-58-FONT.total.size-14));
   // 全寬標註
-  parts.push(`<text x="${W/2}" y="${RULE_Y-58}" text-anchor="middle" font-family="Noto Sans TC" font-size="${FONT.total.size}" font-weight="${fw('total')}" fill="${INK}">${total.toFixed(1)}M</text>`);
+  parts.push(`<text x="${W/2}" y="${RULE_Y-58}" text-anchor="middle" font-family="Noto Sans TC" font-size="${FONT.total.size}" font-weight="${fw('total')}" fill="${INK}">${total.toFixed(LINE_DEC)}M</text>`);
   // 主尺寸線＋兩端界線
   parts.push(`<line x1="${PAD}" y1="${RULE_Y}" x2="${W-PAD}" y2="${RULE_Y}" stroke="${INK}" stroke-width="1.6"/>
     <line x1="${PAD}" y1="${RULE_Y-TICK_UP}" x2="${PAD}" y2="${RULE_Y+8}" stroke="${INK}" stroke-width="1.6"/>
@@ -1126,12 +1138,14 @@ function renderLineStyle(){
     if(LINE_ARROWS && s.kind === 'lane' && w > 12){
       const ap = ARROW_PATHS[s.turn || 'straight'];
       if(ap){
-        let fscale = 40 / 140;
-        const cw = ap.aw * fscale, maxw = Math.max(w - 8, 8);
-        if(cw > maxw) fscale *= maxw / cw;
-        const top = RULE_Y - 6 - 140 * fscale;
-        const flip = (s.dir === 'down') ? ' translate(100 140) scale(-1 -1)' : '';
-        parts.push(`<g transform="translate(${cx - 50*fscale} ${top}) scale(${fscale})"><g transform="${flip}"><path d="${ap.d}" fill="${INK}"/></g></g>`);
+        laneArrowSlots(s, cx, w).forEach(({d, acx, maxw})=>{
+          let fscale = 40 / 140;
+          const cw = ap.aw * fscale;
+          if(cw > maxw) fscale *= maxw / cw;
+          const top = RULE_Y - 6 - 140 * fscale;
+          const flip = (d === 'down') ? ' translate(100 140) scale(-1 -1)' : '';
+          parts.push(`<g transform="translate(${acx - 50*fscale} ${top}) scale(${fscale})"><g transform="${flip}"><path d="${ap.d}" fill="${INK}"/></g></g>`);
+        });
       }
     }
 
@@ -1151,7 +1165,7 @@ function renderLineStyle(){
   if(leftover > 0.02){
     const w = leftover*scale;
     parts.push(`<line x1="${x}" y1="${RULE_Y-TICK_UP}" x2="${x}" y2="${RULE_Y}" stroke="#B4462F" stroke-width="1.2" stroke-dasharray="3 3"/>`);
-    if(w > 30) parts.push(`<text x="${x+w/2}" y="${NUM_Y}" text-anchor="middle" font-family="Noto Sans TC" font-size="${NUM_SIZE}" fill="#B4462F">${leftover.toFixed(1)}</text>`);
+    if(w > 30) parts.push(`<text x="${x+w/2}" y="${NUM_Y}" text-anchor="middle" font-family="Noto Sans TC" font-size="${NUM_SIZE}" fill="#B4462F">${leftover.toFixed(LINE_DEC)}</text>`);
   }
 
   if(snapGuide){
@@ -1344,23 +1358,25 @@ function render(){
       const ap = ARROW_PATHS[s.turn || 'straight'];
       if(ap){
         const AH = 60;                                   // 箭頭固定顯示高度(px)
-        // 依車道寬限制：箭頭實際內容寬 = aw/100 * (100*fscale)；先算等比 fscale
-        let fscale = AH / 140;
-        const contentW = ap.aw * fscale;                 // 內容寬(px)
-        const maxw = Math.max(w - 8, 8);
-        if(contentW > maxw) fscale *= maxw / contentW;   // 車道太窄則縮小
-        const fh = 140 * fscale;
-        // 有圖示時箭頭置於圖示正上方，否則沿用名稱上方的固定基準
-        const ARROW_BOTTOM = (iconTop !== null) ? (iconTop - 12) : (GROUND_Y - 22 + lDyC - 20);
-        const ARROW_TOP = ARROW_BOTTOM - fh;
-        // path 在 0..100 viewBox 內、內容中心固定於 x=50 → 平移使 x=50 對齊車道中心 cx
-        const tx = cx - 50 * fscale;
-        // 往後（逆向）：以上下對稱軸＋左右對稱軸同時翻轉（等同旋轉 180°），
-        // 這樣「左轉」在反向車道仍呈現為左轉，不會變成右轉
-        const flip = (s.dir==='down') ? ` translate(100 140) scale(-1 -1)` : '';
-        parts.push(`<g class="lane-arrow" data-lid="${s.id}" transform="translate(${tx} ${ARROW_TOP}) scale(${fscale})" style="cursor:pointer">
-          <rect x="0" y="0" width="100" height="140" fill="rgba(0,0,0,0)"/>
-          <g transform="${flip}"><path d="${ap.d}" fill="#3A4249"/></g></g>`);
+        // 雙向（無分向線巷弄）時並排兩個箭頭：左 ↓、右 ↑
+        laneArrowSlots(s, cx, w).forEach(({d, acx, maxw})=>{
+          // 依車道寬限制：箭頭實際內容寬 = aw/100 * (100*fscale)；先算等比 fscale
+          let fscale = AH / 140;
+          const contentW = ap.aw * fscale;                 // 內容寬(px)
+          if(contentW > maxw) fscale *= maxw / contentW;   // 車道太窄則縮小
+          const fh = 140 * fscale;
+          // 有圖示時箭頭置於圖示正上方，否則沿用名稱上方的固定基準
+          const ARROW_BOTTOM = (iconTop !== null) ? (iconTop - 12) : (GROUND_Y - 22 + lDyC - 20);
+          const ARROW_TOP = ARROW_BOTTOM - fh;
+          // path 在 0..100 viewBox 內、內容中心固定於 x=50 → 平移使 x=50 對齊箭頭中心 acx
+          const tx = acx - 50 * fscale;
+          // 往後（逆向）：以上下對稱軸＋左右對稱軸同時翻轉（等同旋轉 180°），
+          // 這樣「左轉」在反向車道仍呈現為左轉，不會變成右轉
+          const flip = (d==='down') ? ` translate(100 140) scale(-1 -1)` : '';
+          parts.push(`<g class="lane-arrow" data-lid="${s.id}" transform="translate(${tx} ${ARROW_TOP}) scale(${fscale})" style="cursor:pointer">
+            <rect x="0" y="0" width="100" height="140" fill="rgba(0,0,0,0)"/>
+            <g transform="${flip}"><path d="${ap.d}" fill="#3A4249"/></g></g>`);
+        });
       }
     }
 
@@ -1567,7 +1583,7 @@ svg.addEventListener('pointerdown', e=>{
   const la = e.target.closest('.lane-arrow');
   if(la){
     const s = segs.find(s=>s.id==la.dataset.lid);
-    if(s){ s.dir = (s.dir||'up')==='up'?'down':'up'; render(); }
+    if(s){ s.dir = s.kind==='lane' ? nextLaneDir(s.dir) : ((s.dir||'up')==='up'?'down':'up'); render(); }
     e.preventDefault(); return;
   }
   const km = e.target.closest('.kerb-hit');
@@ -1705,7 +1721,7 @@ function renderTable(){
             <option value="right"${s.mixPos==='right'?' selected':''}>靠右</option>
           </select>` : ''}` : ''}
           ${s.kind==='lane' ? `<select class="mini-sel" data-turn="${s.id}" title="轉向">${ARROW_TURNS.map(t=>`<option value="${t}"${(s.turn||'straight')===t?' selected':''}>${ARROW_TURN_NAME[t]}</option>`).join('')}</select>` : ''}
-          ${(s.kind==='lane' || hasBothDirs(s)) ? `<button class="icon-btn" data-dir="${s.id}" title="朝向（↑前＝背向觀者／↓後＝面向觀者）">${(s.dir||'up')==='up'?'↑前':'↓後'}</button>` : ''}
+          ${(s.kind==='lane' || hasBothDirs(s)) ? `<button class="icon-btn" data-dir="${s.id}" title="朝向（↑前＝背向觀者／↓後＝面向觀者／⇅雙向＝無分向線）">${s.kind==='lane' ? DIR_LABEL[s.dir||'up'] : ((s.dir||'up')==='up'?'↑前':'↓後')}</button>` : ''}
           ${STALL_KINDS.includes(s.kind) ? `<select class="mini-sel" data-incl="${s.id}" title="停車格寬度是否含側溝">
             <option value=""${!s.inclDitch?' selected':''}>不含溝</option><option value="1"${s.inclDitch?' selected':''}>含側溝</option></select>
             ${s.inclDitch ? `<input type="number" step="0.05" min="0" placeholder="溝寬" value="${s.ditchW>0?s.ditchW.toFixed(2):''}" data-dw="${s.id}" style="width:58px;font-size:12px;padding:2px 4px" title="其中側溝寬（選填）">
@@ -1806,7 +1822,7 @@ function renderTable(){
   tb.querySelectorAll('[data-turn]').forEach(sel=> sel.onchange = e=>{
     const s = segs.find(s=>s.id==e.target.dataset.turn); s.turn = e.target.value; render(); });
   tb.querySelectorAll('[data-dir]').forEach(b=> b.onclick = ()=>{
-    const s = segs.find(s=>s.id==b.dataset.dir); s.dir = (s.dir||'up')==='up'?'down':'up'; render(); });
+    const s = segs.find(s=>s.id==b.dataset.dir); s.dir = s.kind==='lane' ? nextLaneDir(s.dir) : ((s.dir||'up')==='up'?'down':'up'); render(); });
   tb.querySelectorAll('[data-shape]').forEach(b=> b.onclick = ()=>{
     const s = segs.find(s=>s.id==b.dataset.shape);
     s.shape = SHAPES[(SHAPES.indexOf(shapeOf(s)) + 1) % SHAPES.length];
@@ -2181,13 +2197,14 @@ document.getElementById('drawstyle').addEventListener('change', e=>{ drawStyle =
 [['fs-label','label'],['fs-num','num'],['fs-total','total'],['fs-title','title']].forEach(([id,key])=>{
   document.getElementById(id).addEventListener('input', e=>{
     const v = parseInt(e.target.value);
-    if(v >= 8 && v <= 48){ FONT[key].size = v; render(); }
+    if(v >= 8 && v <= 48){ FONT[key].size = v; saveFontPref(); render(); }
   });
 });
 [['fb-label','label'],['fb-num','num'],['fb-total','total'],['fb-title','title']].forEach(([id,key])=>{
   document.getElementById(id).addEventListener('click', e=>{
     FONT[key].bold = !FONT[key].bold;
     e.currentTarget.classList.toggle('on', FONT[key].bold);
+    saveFontPref();
     render();
   });
 });
@@ -2466,7 +2483,7 @@ document.getElementById('impfile').onchange = e=>{
       stalls = (d.stalls || []).map(s=>({...s}));
       kerbColor = d.kerbColor || 'none'; kerbPos = d.kerbPos || 'ditch'; kerbMarks = d.kerbMarks || [];
       drawStyle = d.drawStyle || 'color'; document.getElementById('drawstyle').value = drawStyle;
-      if(d.font) Object.assign(FONT, d.font);
+      /* 文字大小為全域設定，匯入斷面不覆蓋 */
       if(d.iconZoom) ICON_ZOOM = d.iconZoom;
     if(d.iconZoom) ICON_ZOOM = d.iconZoom;
       if(d.txtdy) Object.assign(TXTDY, d.txtdy);
@@ -2575,7 +2592,7 @@ async function loadScheme(name){
     stalls = (d.stalls || []).map(s=>({...s}));
     kerbColor = d.kerbColor || 'none'; kerbPos = d.kerbPos || 'ditch'; kerbMarks = d.kerbMarks || [];
     drawStyle = d.drawStyle || 'color'; document.getElementById('drawstyle').value = drawStyle;
-    if(d.font) Object.assign(FONT, d.font);
+    /* 文字大小為全域設定，切換斷面不覆蓋 */
     if(d.iconZoom) ICON_ZOOM = d.iconZoom;
     if(d.txtdy) Object.assign(TXTDY, d.txtdy);
     Object.keys(CHECK_OVERRIDE).forEach(k=>delete CHECK_OVERRIDE[k]);
@@ -2607,10 +2624,7 @@ document.getElementById('newscheme').onclick = ()=>{
   customSeq = 1;
   rebuildAddKinds();
 
-  // 字體回預設
-  FONT.label = {size:18, bold:false};
-  FONT.num   = {size:18, bold:false};
-  FONT.total = {size:21, bold:true};
+  // 文字大小為全域設定，新增斷面不重置；圖示大小回預設
   ICON_ZOOM = 1;
   syncFontUI();
 
@@ -2648,6 +2662,19 @@ document.getElementById('del').onclick = async ()=>{
     document.getElementById('schemes').value = '';
   }catch(e){ alert('刪除失敗：' + (e && e.message ? e.message : e)); }
 };
+
+/* 文字大小（名稱／數字／斷面名稱／全寬標題的大小與粗體）為全域設定，存在瀏覽器 */
+const FONT_KEY = 'road-font';
+function saveFontPref(){ try{ localStorage.setItem(FONT_KEY, JSON.stringify(FONT)); }catch(e){} }
+(function loadFontPref(){
+  try{
+    const v = JSON.parse(localStorage.getItem(FONT_KEY) || 'null');
+    if(v) ['label','num','total','title'].forEach(k=>{
+      if(v[k] && v[k].size >= 8 && v[k].size <= 48) FONT[k] = {size: +v[k].size, bold: !!v[k].bold};
+    });
+  }catch(e){}
+  syncFontUI();
+})();
 
 generate();
 refreshSchemes();
@@ -2718,6 +2745,13 @@ const isStall = it => STALL_KINDS.includes(it.kind);
 const isPedK = it => CLEAR_KINDS.includes(it.kind);
 const fieldsOf = it => isPedK(it) ? ['w','clearW'] : (isStall(it) && it.inclDitch ? ['w','ditchW'] : ['w']);
 const escA = s => esc(s == null ? '' : s).replace(/"/g,'&quot;');
+/* 小數位數：專案設定（預設 1 位，選單可改 2 位），影響鍵盤、顯示、JPG、CSV */
+const dec = () => (D && D.settings && D.settings.dec === 2) ? 2 : 1;
+const fmt = v => (v == null || !isFinite(v)) ? '' : Number(v).toFixed(dec());
+/* 車道行向：up 遠離觀看者／down 朝向觀看者／both 雙向（無分向線） */
+const DIRSYM = {up:'↑', down:'↓', both:'↑↓'};
+const dirSym = d => DIRSYM[d || 'up'] || '↑';
+const DIRTXT = {up:'↑ 遠離觀看者', down:'↓ 朝向觀看者', both:'↑↓ 雙向（無分向線）'};
 const sideTxt = s => s==='L' ? '左' : (s==='R' ? '右' : '');
 
 /* ── 時間：一律存成含時區的 ISO（+08:00） ── */
@@ -2845,29 +2879,46 @@ function itemCheck(sec, it){
   return {bad: v < L.min - 0.005, v, min:L.min, cite:L.cite, basis: useClear ? '淨寬' : '總寬'};
 }
 
-/* 含側溝停車格與側溝相鄰的重複提醒（兩個方向）。
-   步驟三尚無寬度、斷面也還沒建完，「左半／右半」無法判斷，
-   因此只用手動設定或相鄰人行道類／路緣判斷側溝側；判斷不出時，任一側緊鄰側溝都提醒。 */
-function stallSideByNeighbor(arr, i){
-  const s = arr[i];
-  if(s.ditchSide === 'L' || s.ditchSide === 'R') return s.ditchSide;
+/* 含側溝停車格與相鄰側溝自動併入（兩個方向），避免重複計算側溝。
+   新增含側溝停車格時，緊鄰的側溝項目併入停車格；新增側溝時，若緊鄰含側溝停車格（且其側溝未指定在另一側）則併入。
+   併入後側溝項目移除，停車格記錄側溝所在側；側溝已有寬度則轉為「其中側溝寬」。回傳提示文字或 null。 */
+function absorbDitch(sec, it){
+  const arr = sec.items, i = arr.indexOf(it);
+  if(i < 0) return null;
   const l = arr[i-1], r = arr[i+1];
-  const lp = !!(l && DITCH_NEIGH.includes(l.kind)), rp = !!(r && DITCH_NEIGH.includes(r.kind));
-  return lp && !rp ? 'L' : (rp && !lp ? 'R' : null);
-}
-function ditchConflict(arr, i){
-  const it = arr[i];
+  if(isStall(it) && it.inclDitch){
+    const cands = [];
+    if(l && l.kind === 'ditch') cands.push(['L', l]);
+    if(r && r.kind === 'ditch') cands.push(['R', r]);
+    if(!cands.length) return null;
+    const pick = cands.length === 1 ? cands[0] : (cands.find(c=> c[0] === stallDitchSide(arr, i)) || cands[0]);
+    const [side, d] = pick;
+    it.ditchSide = side;
+    if(d.w > 0) it.ditchW = d.w;
+    sec.items = arr.filter(x=> x !== d);
+    return `相鄰的側溝已併入停車格（含側溝，溝在${sideTxt(side)}）`;
+  }
   if(it.kind === 'ditch'){
-    const l = arr[i-1], r = arr[i+1];
-    if(l && isStall(l) && l.inclDitch && stallSideByNeighbor(arr, i-1) !== 'L') return 'ditch';
-    if(r && isStall(r) && r.inclDitch && stallSideByNeighbor(arr, i+1) !== 'R') return 'ditch';
-  } else if(isStall(it) && it.inclDitch){
-    const side = stallSideByNeighbor(arr, i);
-    const l = arr[i-1], r = arr[i+1];
-    if(side !== 'R' && l && l.kind === 'ditch') return 'stall';
-    if(side !== 'L' && r && r.kind === 'ditch') return 'stall';
+    const ok = (s, side) => !!(s && isStall(s) && s.inclDitch && !((s.ditchSide === 'L' || s.ditchSide === 'R') && s.ditchSide !== side));
+    const lOk = ok(l, 'R'), rOk = ok(r, 'L');
+    if(!lOk && !rOk) return null;
+    let s, side;
+    if(lOk && rOk){ if(stallDitchSide(arr, i-1) === 'R'){ s = l; side = 'R'; } else { s = r; side = 'L'; } }
+    else if(lOk){ s = l; side = 'R'; } else { s = r; side = 'L'; }
+    s.ditchSide = side;
+    if(it.w > 0 && !(s.ditchW > 0)) s.ditchW = it.w;
+    sec.items = arr.filter(x=> x !== it);
+    FM.scrollTo = s.id;
+    return `側溝已併入相鄰的停車格（含側溝，溝在${sideTxt(side)}）`;
   }
   return null;
+}
+/* 含側溝停車格的側溝側旁邊還有獨立側溝項目時提醒（例如步驟四才打開「含側溝」） */
+function ditchDupWarn(sec, it){
+  if(!isStall(it) || !it.inclDitch) return false;
+  const i = sec.items.indexOf(it), side = stallDitchSide(sec.items, i);
+  const nb = sec.items[side === 'L' ? i-1 : i+1];
+  return !!(nb && nb.kind === 'ditch');
 }
 
 /* ═════════ 對話框、提示 ═════════ */
@@ -2940,7 +2991,7 @@ function renderSecHead(){
     const n = i+1, cls = n === sec.step ? 'on' : (!canStep(sec, n) && n < sec.step ? 'done' : '');
     return `<button data-step="${n}" class="${cls}">${n} ${nm}</button>`;
   }).join('');
-  $('fmSum').innerHTML = `<span class="lbl" style="font-size:11px;color:var(--ink-soft)">目前加總<br></span><b>${sumW(sec).toFixed(2)}</b> m`;
+  $('fmSum').innerHTML = `<span class="lbl" style="font-size:11px;color:var(--ink-soft)">目前加總<br></span><b>${fmt(sumW(sec))}</b> m`;
   renderStrip();
 }
 function renderStrip(){
@@ -2954,7 +3005,7 @@ function renderStrip(){
   el.innerHTML = arr.map((it,i)=>{
     const w = it.w > 0 ? it.w : avg;
     const style = (eq ? '' : `flex:${w} 1 0;`) + `background:${itemColor(it)}`;
-    const lab = it.kind === 'lane' ? (it.dir === 'down' ? '↓' : '↑') : SHORT[it.kind];
+    const lab = it.kind === 'lane' ? (it.dir === 'both' ? '⇅' : dirSym(it.dir)) : SHORT[it.kind];
     let sep = '';
     if(isStall(it) && it.inclDitch && it.ditchW > 0 && it.w > it.ditchW){
       const pct = (it.ditchW / it.w * 100).toFixed(1);
@@ -3081,15 +3132,16 @@ function rowHtml(sec, it, m, opt){
   if(isStall(it)){
     if(!it.inclDitch) sub.push('不含側溝');
     else {
-      const i = sec.items.indexOf(it);
-      sub.push(`含側溝${it.ditchW > 0 ? ' ' + it.ditchW.toFixed(2) : ''}（在${sideTxt(stallDitchSide(sec.items, i))}）`);
+      const i = sec.items.indexOf(it), fixed = it.ditchSide === 'L' || it.ditchSide === 'R';
+      const where = (opt.step4 || fixed) ? `（在${sideTxt(stallDitchSide(sec.items, i))}）` : '';
+      sub.push(`含側溝${it.ditchW > 0 ? ' ' + fmt(it.ditchW) : ''}${where}`);
     }
   }
   if(isPedK(it) && it.obstacles && it.obstacles.length) sub.push(it.obstacles.join('、'));
   const wv = it.w > 0
-    ? `<span class="wv">${it.w.toFixed(2)}${it.clearW > 0 ? `<small>淨 ${it.clearW.toFixed(2)}</small>` : ''}</span>`
+    ? `<span class="wv">${fmt(it.w)}${it.clearW > 0 ? `<small>淨 ${fmt(it.clearW)}</small>` : ''}</span>`
     : (opt.step4 ? `<span class="wv miss">—</span>` : '');
-  const dir = it.kind === 'lane' ? `<button class="fm-dir" data-dir="${it.id}">${it.dir === 'down' ? '↓' : '↑'}</button>` : '';
+  const dir = it.kind === 'lane' ? `<button class="fm-dir" data-dir="${it.id}">${it.dir === 'both' ? '⇅' : dirSym(it.dir)}</button>` : '';
   return `<li class="fm-item${opt.cur ? ' cur' : ''}${opt.ins ? ' ins' : ''}" data-m="${m}" data-id="${it.id}">
     <span class="no">${m+1}</span><span class="dot" style="background:${itemColor(it)}"></span>
     <span class="nm">${esc(itemName(it))}${sub.length ? `<small>${esc(sub.join('｜'))}</small>` : ''}</span>
@@ -3099,7 +3151,7 @@ function bindDirBtns(sec, root){
   root.querySelectorAll('[data-dir]').forEach(b=> b.onclick = e=>{
     e.stopPropagation();
     const it = sec.items.find(x=>x.id === b.dataset.dir); if(!it) return;
-    it.dir = it.dir === 'down' ? 'up' : 'down'; it.dirManual = true;
+    it.dir = nextLaneDir(it.dir); it.dirManual = true;
     touch(sec); save(); renderAll();
   });
 }
@@ -3158,36 +3210,26 @@ async function addElem(key){
   const n = sec.items.length;
   const m = (FM.insertAt != null && FM.insertAt <= n) ? FM.insertAt : n;
   const lr = sec.startSide === 'R' ? n - m : m;
-  const temp = sec.items.slice(); temp.splice(lr, 0, it);
-  const cf = ditchConflict(temp, lr);
-  if(cf === 'ditch'){
-    const ok = await ask('可能重複建立側溝', '此停車格已含側溝，是否仍要另建側溝？',
-      [{label:'仍要建立', value:true, cls:'pri'}, {label:'取消', value:false}]);
-    if(!ok) return;
-  } else if(cf === 'stall'){
-    const r = await ask('可能重複計算側溝', '旁邊已有側溝項目，但停車格預設「含側溝」。',
-      [{label:'建立並設為「不含側溝」', value:'off', cls:'pri'}, {label:'仍建立（含側溝）', value:'on'}, {label:'取消', value:null}]);
-    if(r === null) return;
-    if(r === 'off') it.inclDitch = false;
-  }
   touch(sec);
   sec.items.splice(lr, 0, it);
   FM.insertAt = null;
-  autoDirs(sec); save();
   FM.scrollTo = it.id;
+  const msg = absorbDitch(sec, it);
+  autoDirs(sec); save();
   renderAll();
+  if(msg) toast(msg);
 }
 async function itemMenu(m){
   const sec = cur(), arr = mOrder(sec), it = arr[m];
   if(!it) return;
   if(sec.step === 4){ selectItem(m); return; }
   const btns = [{label:'在此之前插入', value:'ins', cls:'pri'}];
-  if(it.kind === 'lane') btns.push({label:`切換行向（目前 ${it.dir === 'down' ? '↓ 朝向觀看者' : '↑ 遠離觀看者'}）`, value:'dir'});
+  if(it.kind === 'lane') btns.push({label:`切換行向（目前 ${DIRTXT[it.dir || 'up']}）`, value:'dir'});
   if(it.kind === 'other') btns.push({label:'修改名稱', value:'ren'});
   btns.push({label:'刪除此項目', value:'del', cls:'danger'}, {label:'取消', value:null});
   const r = await ask(`${m+1}. ${itemName(it)}`, '', btns);
   if(r === 'ins'){ FM.insertAt = m; renderMain(); toast('請點選要插入的元素'); }
-  else if(r === 'dir'){ it.dir = it.dir === 'down' ? 'up' : 'down'; it.dirManual = true; touch(sec); save(); renderAll(); }
+  else if(r === 'dir'){ it.dir = nextLaneDir(it.dir); it.dirManual = true; touch(sec); save(); renderAll(); }
   else if(r === 'ren'){
     const nm = await askText('其他項目名稱', '留空即顯示「其他」', it.label || '');
     if(nm !== null){ if(nm.trim()) it.label = nm.trim(); else delete it.label; save(); renderAll(); }
@@ -3216,6 +3258,7 @@ function enterStep4(sec){
 }
 function selectItem(m, f){
   const sec = cur();
+  FM.kpHidden = false;
   FM.sel = {m, f: f || 'w'}; FM.buf = null; FM.selSec = sec.id; sec.wIdx = m;
   FM.scrollTo = (mOrder(sec)[m] || {}).id;
   save(); renderAll();
@@ -3226,7 +3269,7 @@ function fieldBtn(it, key, label){
   const on = FM.sel.f === key, val = it[key];
   let txt, cls = 'v';
   if(on && FM.buf != null) txt = FM.buf;
-  else if(val > 0) txt = val.toFixed(2);
+  else if(val > 0) txt = fmt(val);
   else { txt = on ? '' : '—'; if(!on) cls += ' ph'; }
   if(on) cls += ' typing';
   return `<button class="fm-field${on ? ' on' : ''}" data-f="${key}"><span class="k">${label}</span><span class="${cls}">${esc(txt)}</span></button>`;
@@ -3234,9 +3277,9 @@ function fieldBtn(it, key, label){
 function panelHtml(sec, arr, m){
   const it = arr[m];
   let head = `<div class="fm-ph"><span class="pos">${m+1}/${arr.length}</span><span class="nm">${esc(itemName(it))}</span>`;
-  if(it.kind === 'lane') head += `<button class="fm-mini" id="p-dir">${it.dir === 'down' ? '↓ 朝向觀看者' : '↑ 遠離觀看者'}</button>`;
+  if(it.kind === 'lane') head += `<button class="fm-mini" id="p-dir">${DIRTXT[it.dir || 'up']}</button>`;
   if(it.kind === 'other') head += `<button class="fm-mini" id="p-ren">改名</button>`;
-  head += `</div>`;
+  head += `<button class="fm-mini fm-hide" id="p-hide" title="收起輸入區，方便點選其他項目">▼ 收起</button></div>`;
   let fields = '', opts = '', msgs = [];
   if(isPedK(it)){
     fields = fieldBtn(it, 'w', '總寬 m') + fieldBtn(it, 'clearW', '淨寬 m') +
@@ -3245,8 +3288,8 @@ function panelHtml(sec, arr, m){
     opts = `<div class="fm-opts obs">${OBSTACLES.map(o=>`<button class="fm-chip${obs.includes(o) ? ' on' : ''}" data-ob="${o}">${o}</button>`).join('')}</div>`;
     const c = itemCheck(sec, it);
     if(it.clearW > 0 && it.w > 0 && it.clearW > it.w + 0.005) msgs.push(['bad','淨寬大於總寬，請確認']);
-    if(c) msgs.push(c.bad ? ['bad', `⚠ ${c.basis} ${c.v.toFixed(2)} m 未達 ${c.min.toFixed(2)} m｜${c.cite}`]
-                          : ['nt', `✓ ${c.basis} ${c.v.toFixed(2)} m ≥ ${c.min.toFixed(2)} m`]);
+    if(c) msgs.push(c.bad ? ['bad', `⚠ ${c.basis} ${fmt(c.v)} m 未達 ${fmt(c.min)} m｜${c.cite}`]
+                          : ['nt', `✓ ${c.basis} ${fmt(c.v)} m ≥ ${fmt(c.min)} m`]);
     else msgs.push(['nt', '淨寬＝扣除障礙物後最窄可通行寬度（直接量測）；法規檢核以淨寬為準']);
   } else if(isStall(it)){
     const incl = !!it.inclDitch;
@@ -3260,6 +3303,7 @@ function panelHtml(sec, arr, m){
         <button data-ds="L" class="${it.ditchSide === 'L' ? 'on' : ''}">左</button>
         <button data-ds="R" class="${it.ditchSide === 'R' ? 'on' : ''}">右</button></span></div>` : '');
     if(incl && it.ditchW > 0 && it.w > 0 && it.ditchW >= it.w) msgs.push(['bad','側溝寬不應大於或等於停車格寬']);
+    if(ditchDupWarn(sec, it)) msgs.push(['bad','側溝那一側另有獨立的側溝項目，可能重複計算（可刪除該側溝，寬度填入「其中側溝寬」）']);
     msgs.push(['nt', incl ? '寬度＝停車格含側溝總寬（通常自緣石量到停車格外側標線）；加總只計此寬度'
                             : '寬度＝停車格本身寬；側溝若存在請另建側溝項目']);
   } else {
@@ -3269,9 +3313,13 @@ function panelHtml(sec, arr, m){
   return `<div class="fm-panel">${head}<div class="fm-fields">${fields}</div>${opts}${msgHtml}</div>`;
 }
 function step4(sec){
-  const arr = mOrder(sec), m = FM.sel.m;
-  return `<div class="fm-scroll"><ol class="fm-list" id="fmList">${arr.map((it,k)=>rowHtml(sec, it, k, {cur: k === m, step4:true})).join('')}</ol></div>
-    <div class="fm-fixed">${panelHtml(sec, arr, m)}
+  const arr = mOrder(sec), m = FM.sel.m, it = arr[m];
+  const list = `<div class="fm-scroll"><ol class="fm-list" id="fmList">${arr.map((x,k)=>rowHtml(sec, x, k, {cur: k === m, step4:true})).join('')}</ol></div>`;
+  if(FM.kpHidden){
+    const val = it.w > 0 ? fmt(it.w) + ' m' : '未輸入';
+    return list + `<div class="fm-fixed"><button class="fm-expand" id="p-exp"><span>▲ 展開輸入</span><small>${m+1}/${arr.length} ${esc(itemName(it))}　${val}</small></button></div>`;
+  }
+  return list + `<div class="fm-fixed">${panelHtml(sec, arr, m)}
       <div class="fm-kp">${KP.flat().map(k=>`<button data-k="${k}" class="${k === 'next' ? 'next' : (KPL[k] ? 'fn' : '')}">${KPL[k] || k}</button>`).join('')}</div>
     </div>`;
 }
@@ -3289,8 +3337,10 @@ function bind4(sec, main){
   main.querySelectorAll('[data-k]').forEach(b=> b.onclick = ()=> keypad(b.dataset.k));
   main.querySelectorAll('[data-f]').forEach(b=> b.onclick = ()=>{ FM.sel.f = b.dataset.f; FM.buf = null; renderMain(); });
   const q = s => main.querySelector(s);
+  if(q('#p-hide')) q('#p-hide').onclick = ()=>{ FM.kpHidden = true; renderMain(); };
+  if(q('#p-exp')) q('#p-exp').onclick = ()=>{ FM.kpHidden = false; renderMain(); };
   if(q('#p-eq')) q('#p-eq').onclick = ()=>{ if(it.w > 0){ it.clearW = it.w; FM.buf = null; touch(sec); save(); renderAll(); } };
-  if(q('#p-dir')) q('#p-dir').onclick = ()=>{ it.dir = it.dir === 'down' ? 'up' : 'down'; it.dirManual = true; save(); renderAll(); };
+  if(q('#p-dir')) q('#p-dir').onclick = ()=>{ it.dir = nextLaneDir(it.dir); it.dirManual = true; save(); renderAll(); };
   if(q('#p-ren')) q('#p-ren').onclick = async ()=>{
     const nm = await askText('其他項目名稱', '留空即顯示「其他」', it.label || '');
     if(nm !== null){ if(nm.trim()) it.label = nm.trim(); else delete it.label; save(); renderAll(); }
@@ -3311,7 +3361,7 @@ function bind4(sec, main){
     save(); renderAll();
   });
 }
-const parseBuf = b => { const v = parseFloat(b); return (isFinite(v) && v > 0) ? round2(v) : null; };
+const parseBuf = b => { const v = parseFloat(b); if(!(isFinite(v) && v > 0)) return null; const f = Math.pow(10, dec()); return Math.round(v * f) / f; };
 function keypad(k){
   const sec = cur(), arr = mOrder(sec), it = arr[FM.sel.m];
   if(!it) return;
@@ -3321,13 +3371,13 @@ function keypad(k){
   let b;
   if(k === 'clr'){ b = ''; }
   else if(k === 'bs'){
-    b = FM.buf != null ? FM.buf : (it[f] > 0 ? String(round2(it[f])) : '');
+    b = FM.buf != null ? FM.buf : (it[f] > 0 ? fmt(it[f]).replace(/\.?0+$/, '') : '');
     b = b.slice(0, -1);
   } else {
     b = FM.buf != null ? FM.buf : '';
     if(k === '.'){ if(b.includes('.')) return; b = (b || '0') + '.'; }
     else {
-      if(/\.\d\d$/.test(b)) return;                                  // 最多兩位小數
+      if(b.includes('.') && b.split('.')[1].length >= dec()) return;   // 小數位數依專案設定
       if(!b.includes('.') && b.replace(/^0+/, '').length >= 2) return;   // 整數最多兩位
       b = b === '0' ? k : b + k;
     }
@@ -3435,9 +3485,9 @@ $('fmDone').onclick = async ()=>{
   const rows = [
     ['斷面', `${esc(secLabel(sec))}　${esc(sec.road)}　面向${esc(sec.facing)}${sec.facingNote ? '（' + esc(sec.facingNote) + '）' : ''}`],
     ['位置註記', esc(sec.locNote || '—')],
-    ['加總寬度', `<b>${sumW(sec).toFixed(2)} m</b>（${arr.length} 項）`],
+    ['加總寬度', `<b>${fmt(sumW(sec))} m</b>（${arr.length} 項）`],
     ['拍照紀錄', sec.photos.length ? `${sec.photos.length} 筆` : '<span class="bad">0 筆｜尚未記錄拍照，確定完成？</span>'],
-    ['法規不符', bads.length ? `<span class="bad">${bads.map(x=>`${esc(itemName(x.it))} ${x.c.basis} ${x.c.v.toFixed(2)} &lt; ${x.c.min.toFixed(2)}`).join('<br>')}</span>` : '無'],
+    ['法規不符', bads.length ? `<span class="bad">${bads.map(x=>`${esc(itemName(x.it))} ${x.c.basis} ${fmt(x.c.v)} &lt; ${fmt(x.c.min)}`).join('<br>')}</span>` : '無'],
     ['未輸入寬度', missing.length ? `<span class="bad">${missing.map(it=>esc(itemName(it))).join('、')}</span>` : '無'],
   ];
   if(!arr.length) rows.push(['項目', '<span class="bad">尚未建立任何斷面項目</span>']);
@@ -3500,7 +3550,7 @@ function sectionSVG(sec){
     total = Math.max(round2(segs.reduce((a,s)=>a+s.w, 0)), 0.1);
     roadClass = 'minor'; stalls = []; kerbColor = 'none'; kerbMarks = []; drawStyle = 'line'; leftover = 0;
     Object.assign(FONT, sc.font); TXTDY.label = 0; TXTDY.num = 0; ICON_ZOOM = 1; nameEl.value = '';
-    LINE_ARROWS = true; EXPORT_MODE = true; suppressTable = true;   // 匯出模式：不標法規警示
+    LINE_ARROWS = true; LINE_DEC = dec(); EXPORT_MODE = true; suppressTable = true;   // 匯出模式：不標法規警示
     render();
     svg.querySelectorAll('.title-placeholder').forEach(t=>t.remove());
     let bb = null;
@@ -3513,7 +3563,7 @@ function sectionSVG(sec){
     const str = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vx} ${vy} ${vw} ${vh}" width="${Math.round(vw)}" height="${Math.round(vh)}"><rect x="${vx}" y="${vy}" width="${vw}" height="${vh}" fill="#FFFFFF"/>${body}</svg>`;
     return {svg: str, w: vw, h: vh};
   } finally {
-    LINE_ARROWS = false; EXPORT_MODE = false; suppressTable = false;
+    LINE_ARROWS = false; LINE_DEC = 1; EXPORT_MODE = false; suppressTable = false;
     total = saved.total; roadClass = saved.roadClass; segs = saved.segs; stalls = saved.stalls;
     kerbColor = saved.kerbColor; kerbPos = saved.kerbPos; kerbMarks = saved.kerbMarks; drawStyle = saved.drawStyle; leftover = saved.leftover;
     Object.assign(FONT, saved.font); Object.assign(TXTDY, saved.txtdy); ICON_ZOOM = saved.iconZoom; nameEl.value = saved.name;
@@ -3535,7 +3585,7 @@ function fitText(x, str, maxW){
   return str + '…';
 }
 function itemNote(sec, it, i){
-  if(isStall(it)) return it.inclDitch ? `含側溝${it.ditchW > 0 ? ' ' + it.ditchW.toFixed(2) + ' m' : ''}（在${sideTxt(stallDitchSide(sec.items, i))}）` : '不含側溝';
+  if(isStall(it)) return it.inclDitch ? `含側溝${it.ditchW > 0 ? ' ' + fmt(it.ditchW) + ' m' : ''}（在${sideTxt(stallDitchSide(sec.items, i))}）` : '不含側溝';
   if(isPedK(it) && it.obstacles && it.obstacles.length) return '障礙：' + it.obstacles.join('、');
   return '';
 }
@@ -3564,7 +3614,7 @@ async function makeSectionJPG(sec, finishedAt){
   const tm = sec.startedAt ? `${sec.startedAt.slice(0,10)} ${hm(sec.startedAt)}–${hm(finishedAt)}` : (finishedAt ? finishedAt.slice(0,16).replace('T',' ') : '—');
   const gps = sec.gps ? `${sec.gps.lat.toFixed(6)}, ${sec.gps.lng.toFixed(6)}（±${sec.gps.acc} m）` : '未記錄';
   x.font = `400 28px ${JPG_FONT}`; x.fillStyle = '#3F4A45';
-  x.fillText(fitText(x, [`位置：${sec.locNote || '—'}`, `時間：${tm}`, `GPS：${gps}`, `加總 ${sumW(sec).toFixed(2)} m`].join('　｜　'), dW), P, P + 104);
+  x.fillText(fitText(x, [`位置：${sec.locNote || '—'}`, `時間：${tm}`, `GPS：${gps}`, `加總 ${fmt(sumW(sec))} m`].join('　｜　'), dW), P, P + 104);
   x.fillStyle = '#17211F'; x.fillRect(P, P + 128, dW, 3);
   // 斷面圖
   const dy = P + headH;
@@ -3590,9 +3640,9 @@ async function makeSectionJPG(sec, finishedAt){
         x.fillStyle = '#D5DAD3'; x.fillRect(bx, ry + RH - 1, BW, 1);
         x.font = `400 26px ${JPG_FONT}`; x.fillStyle = '#17211F';
         const vals = [String(i+1), itemName(it),
-          it.w > 0 ? it.w.toFixed(2) : '未輸入',
-          isPedK(it) && it.clearW > 0 ? it.clearW.toFixed(2) : '',
-          it.kind === 'lane' ? (it.dir === 'down' ? '↓' : '↑') : '',
+          it.w > 0 ? fmt(it.w) : '未輸入',
+          isPedK(it) && it.clearW > 0 ? fmt(it.clearW) : '',
+          it.kind === 'lane' ? dirSym(it.dir) : '',
           itemNote(sec, it, i)];
         let cx2 = bx;
         COLS.forEach(([, f, al], k)=>{ cell(vals[k], cx2, BW*f, ry + 34, al); cx2 += BW*f; });
@@ -3603,7 +3653,7 @@ async function makeSectionJPG(sec, finishedAt){
     if(two) block(per, n, P + BW + gap);
   }
   x.textAlign = 'right'; x.font = `400 22px ${JPG_FONT}`; x.fillStyle = '#8A948F';
-  x.fillText(`${secKey(sec)}.jpg　↑ 遠離觀看者　↓ 朝向觀看者`, CW - P, H - 26);
+  x.fillText(`${secKey(sec)}.jpg　↑ 遠離觀看者　↓ 朝向觀看者${sec.items.some(it=>it.kind === 'lane' && it.dir === 'both') ? '　↑↓ 雙向（無分向線）' : ''}`, CW - P, H - 26);
   x.textAlign = 'left';
   const blob = await new Promise((res, rej)=> c.toBlob(b=> b ? res(b) : rej(new Error('無法輸出 JPG')), 'image/jpeg', 0.92));
   return {blob, name: secKey(sec) + '.jpg'};
@@ -3672,7 +3722,7 @@ function listSheet(){
     const dup = seqC[s.seq] > 1 || serC[s.serial] > 1;
     const meta = blank ? '尚未輸入' : [
       s.locNote ? esc(s.locNote) : '',
-      `加總 ${sumW(s).toFixed(2)} m`, `${s.items.length} 項`, `📷 ${s.photos.length}`,
+      `加總 ${fmt(sumW(s))} m`, `${s.items.length} 項`, `📷 ${s.photos.length}`,
       s.startedAt ? `${hm(s.startedAt)}${s.finishedAt ? '–' + hm(s.finishedAt) : ''}` : '',
       miss ? `<span class="bad">缺寬度 ${miss} 項</span>` : '',
       dup ? '<span class="bad">⚠ 編號重複</span>' : '',
@@ -3837,12 +3887,12 @@ function exportCSV(){
       const st = isStall(it);
       rows.push(base.concat([
         i+1, type,
-        it.w > 0 ? it.w.toFixed(2) : '',
-        isPedK(it) && it.clearW > 0 ? it.clearW.toFixed(2) : '',
+        it.w > 0 ? fmt(it.w) : '',
+        isPedK(it) && it.clearW > 0 ? fmt(it.clearW) : '',
         isPedK(it) && it.obstacles ? it.obstacles.join('、') : '',
-        it.kind === 'lane' ? (it.dir === 'down' ? '↓' : '↑') : '',
+        it.kind === 'lane' ? dirSym(it.dir) : '',
         st ? (it.inclDitch ? '是' : '否') : '',
-        st && it.inclDitch && it.ditchW > 0 ? it.ditchW.toFixed(2) : '',
+        st && it.inclDitch && it.ditchW > 0 ? fmt(it.ditchW) : '',
         st && it.inclDitch ? sideTxt(stallDitchSide(s.items, i)) : '',
       ]));
     });
@@ -3884,6 +3934,7 @@ $('fmMenuBtn').onclick = async ()=>{
     {label:'匯出 JSON（可匯回編輯模式）', value:'json', cls:'pri'},
     {label:'匯出 CSV', value:'csv'},
     {label:'匯入現勘 JSON', value:'imp'},
+    {label:`設定：小數位數（目前 ${dec()} 位）`, value:'dec'},
     {label:'切換到編輯模式', value:'edit'},
     {label:'開新專案（清空全部資料）', value:'new', cls:'danger'},
     {label:'取消', value:null},
@@ -3891,6 +3942,11 @@ $('fmMenuBtn').onclick = async ()=>{
   if(r === 'json') exportJSON();
   else if(r === 'csv') exportCSV();
   else if(r === 'imp') $('fmImp').click();
+  else if(r === 'dec'){
+    const v = await ask('小數位數', '鍵盤可輸入的位數、清單與加總、JPG、CSV 都依此設定。建議開新專案時先設定好。<br>編輯模式不受影響。',
+      [{label:'小數點後 1 位', value:1, cls: dec() === 1 ? 'pri' : ''}, {label:'小數點後 2 位', value:2, cls: dec() === 2 ? 'pri' : ''}, {label:'取消', value:null}]);
+    if(v){ D.settings = Object.assign({}, D.settings, {dec:v}); FM.buf = null; save(); renderAll(); toast(`小數位數：${v} 位`); }
+  }
   else if(r === 'edit') setMode('edit');
   else if(r === 'new') newProject();
 };
