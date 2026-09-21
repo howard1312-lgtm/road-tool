@@ -289,6 +289,9 @@ body.mode-field .wrap{display:none}
 .fm-sheet .body{flex:1;min-height:0;overflow-y:auto;font-size:15px;line-height:1.55}
 .fm-sheet .acts{display:flex;flex-direction:column;gap:8px;margin-top:12px}
 .fm-sheet .acts.row{flex-direction:row}
+/* 按鈕很多（如選單）時，按鈕區可捲動，不會超出畫面 */
+.fm-sheet .acts{flex:none;max-height:55dvh;overflow-y:auto}
+.fm-sheet .acts:not(.row) > *{flex-shrink:0}
 .fm-sheet .acts.row > *{flex:1}
 #fm .fm-sheet .acts button, .fm-sheet .acts button{min-height:50px;border:1px solid var(--ink);background:#fff;color:var(--ink);font-size:16px;border-radius:6px;font-family:inherit}
 #fm .fm-sheet .acts button.pri{background:var(--ink);color:var(--card)}
@@ -306,6 +309,12 @@ body.mode-field .wrap{display:none}
 .fm-sec .st.done{background:var(--fm-ok);color:#fff}
 .fm-sec .st.draft{background:#E0B64A;color:#fff}
 .fm-sec .st.blank{background:var(--rule);color:var(--ink)}
+.fm-sec .st.pre{background:#fff;color:var(--fm-hl);border:1px solid var(--fm-hl)}
+#fm .fm-pick{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;margin-bottom:6px;padding:0 12px;background:#fff;border:1px solid var(--rule);color:var(--ink);text-align:left}
+#fm .fm-pick b{font-family:"JetBrains Mono",monospace;font-size:17px;flex:none}
+#fm .fm-pick span{flex:1;min-width:0;font-size:17px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm .fm-ta{width:100%;font-size:17px;line-height:1.5;padding:10px 12px;border-radius:6px;border:1px solid var(--rule);background:#fff;color:var(--ink);font-family:inherit;resize:vertical}
+#fm .fm-bar .copy small{display:block;font-size:12px;font-weight:500;color:var(--ink-soft);font-family:"JetBrains Mono",monospace;margin-top:1px}
 .fm-sec .m{font-size:13px;color:var(--ink-soft);margin-top:3px}
 .fm-sec .m .bad{color:var(--fm-bad);font-weight:700}
 .fm-sec .b{display:flex;gap:6px;margin-top:6px}
@@ -2815,6 +2824,19 @@ const newData = () => ({type:'road-survey', version:1, createdAt:isoTW(), update
 const isBlank = s => !s.road && !s.facing && !s.items.length && !s.photos.length && !s.locNote && !s.facingNote && !s.startSide;
 const cur = () => D.sections[D.cur];
 const exportable = () => D.sections.filter(s=>!isBlank(s));
+/* 預建斷面：現勘前貼上路名清單建立（s.pre）；只有路名、尚未量測者為「未開始」 */
+const onlyRoad = s => !s.facing && !s.facingNote && !s.locNote && !s.startSide && !s.items.length && !s.photos.length;
+const isPreEmpty = s => !!s.pre && s.status !== 'done' && onlyRoad(s);
+const surveyed = () => D.sections.filter(s=> !isBlank(s) && !isPreEmpty(s));
+const preCount = () => D.sections.filter(isPreEmpty).length;
+/* 「複製上一」的來源：最近一個按「完成」的斷面（與清單順序無關）；都沒有完成過時用清單中的前一個 */
+function copySource(sec){
+  const t = s => s.modifiedAt || s.finishedAt || '';
+  const done = D.sections.filter(s=> s !== sec && s.status === 'done' && !isBlank(s));
+  if(done.length) return done.reduce((a,s)=> t(s) > t(a) ? s : a);
+  const prev = D.sections[D.sections.indexOf(sec) - 1];
+  return prev && !isBlank(prev) && !isPreEmpty(prev) ? prev : null;
+}
 
 /* 畫面暫態（不存檔） */
 const FM = {tab:'sec', insertAt:null, sel:null, selSec:null, buf:null, scrollTo:null};
@@ -3058,6 +3080,8 @@ function renderBar(){
   const c = $('fmShotN');
   c.innerHTML = `${n}<small>筆</small>`;
   c.classList.toggle('zero', n === 0);
+  const cb = $('fmCopy'), src = FM.tab === 'pk' ? null : copySource(cur());
+  cb.innerHTML = src ? `複製上一<small>${esc(secLabel(src))}</small>` : '複製上一';
 }
 
 /* ═════════ 繪製：主畫面 ═════════ */
@@ -3501,25 +3525,27 @@ function photoSheet(){
 }
 $('fmCopy').onclick = async ()=>{
   if(FM.tab === 'pk') return pkCopyPrev();
-  if(D.cur === 0){ toast('這是第一個斷面，沒有上一個可複製'); return; }
-  const prev = D.sections[D.cur-1], sec = cur();
-  if(isBlank(prev)){ toast('上一個斷面是空白的'); return; }
-  if(!isBlank(sec)){
+  const sec = cur(), prev = copySource(sec);
+  if(!prev){ toast('還沒有已完成的斷面可以複製'); return; }
+  const keep = !!sec.pre;                               // 預建斷面：保留路名與位置註記，只複製其餘內容
+  const has = keep ? !!(sec.facing || sec.facingNote || sec.startSide || sec.items.length || sec.photos.length) : !isBlank(sec);
+  if(has){
     const ok = await ask('覆蓋目前斷面？',
       `目前斷面 ${esc(secLabel(sec))} 已有內容，複製上一斷面會取代這些內容（拍照紀錄也會清空）。`,
       [{label:'覆蓋', value:true, cls:'danger'}, {label:'取消', value:false}]);
     if(!ok) return;
   }
   Object.assign(sec, {
-    road:prev.road, facing:prev.facing, facingNote:prev.facingNote, startSide:prev.startSide, locNote:'',
+    road: keep ? sec.road : prev.road, facing:prev.facing, facingNote:prev.facingNote, startSide:prev.startSide,
+    locNote: keep ? sec.locNote : '',
     items: prev.items.map(it=> Object.assign({}, it, {id:newId(), obstacles: it.obstacles ? it.obstacles.slice() : undefined})),
     photos:[], gps:null, gpsErr:null, gpsBusy:false, startedAt:null, finishedAt:null, status:'draft', wIdx:0,
-    step: prev.startSide ? 3 : (prev.road && prev.facing ? 2 : 1),
+    step: prev.startSide ? 3 : ((keep ? sec.road : prev.road) && prev.facing ? 2 : 1),
   });
   delete sec.modifiedAt;
   FM.insertAt = null; FM.sel = null;
   touch(sec); save(); renderAll();
-  toast(`已複製 ${secLabel(prev)}，確認項目後再輸入寬度`);
+  toast(`已複製 ${secLabel(prev)} ${prev.road}，確認項目後再輸入寬度`);
 };
 $('fmDone').onclick = async ()=>{
   if(FM.tab === 'pk') return pkDone();
@@ -3580,12 +3606,66 @@ $('fmDone').onclick = async ()=>{
 function finishSection(sec, T0){
   sec.status = 'done';
   if(!sec.finishedAt) sec.finishedAt = T0; else sec.modifiedAt = isoTW();   // 保留第一次完成時間，供照片配對
+  if(preCount()){                                       // 還有未開始的預建斷面：現場順序不一定，讓使用者自己挑
+    FM.sel = null; FM.insertAt = null;
+    save(); renderAll(); nextSheet(secLabel(sec));
+    return;
+  }
   let idx = D.sections.findIndex((s,i)=> i > D.sections.indexOf(sec) && isBlank(s));
   if(idx < 0){ D.sections.push(blankSection()); renumber(); idx = D.sections.length - 1; }
   const doneLabel = secLabel(sec);
   D.cur = idx; FM.sel = null; FM.insertAt = null;
   closeSheet(); save(); renderAll();
   toast(`${doneLabel} 已完成，開始下一個斷面 ${secLabel(cur())}`);
+}
+
+/* 選擇下一個斷面：未開始的預建斷面，或新的空白斷面 */
+function nextSheet(doneLabel){
+  const pend = D.sections.map((s,i)=>({s, i})).filter(x=> isPreEmpty(x.s));
+  const sh = openSheet(`<h3><span>${doneLabel ? esc(doneLabel) + ' 已完成・' : ''}下一個斷面</span><button class="fm-tbtn" id="nx-x">關閉</button></h3>
+    <div class="body"><p class="fm-hint" style="margin-top:0">未開始的預建斷面 ${pend.length} 個，點選現場接著要量的斷面。</p>
+      ${pend.map(x=>`<button class="fm-pick" data-nx="${x.i}"><b>${esc(secLabel(x.s))}</b><span>${esc(x.s.road || '（未填路名）')}</span></button>`).join('')}</div>
+    <div class="acts"><button class="pri" id="nx-new">＋ 新的空白斷面</button></div>`, true);
+  const go = i => { D.cur = i; FM.sel = null; FM.insertAt = null; FM.tab = 'sec'; closeSheet(); save(); renderAll(); };
+  sh.querySelector('#nx-x').onclick = ()=> closeSheet();
+  sh.querySelectorAll('[data-nx]').forEach(b=> b.onclick = ()=>{
+    const i = +b.dataset.nx; go(i); toast(`開始 ${secLabel(D.sections[i])} ${D.sections[i].road}`);
+  });
+  sh.querySelector('#nx-new').onclick = ()=>{
+    let idx = D.sections.findIndex(s=> isBlank(s));
+    if(idx < 0){ D.sections.push(blankSection()); renumber(); idx = D.sections.length - 1; }
+    go(idx); toast(`開始新的斷面 ${secLabel(cur())}`);
+  };
+}
+/* 預建斷面：貼上路名清單（一行一個），依序建立只有路名的斷面 */
+function preSheet(){
+  const sh = openSheet(`<h3><span>預建斷面</span><button class="fm-tbtn" id="pre-x">取消</button></h3>
+    <div class="body"><p class="fm-hint" style="margin-top:0">現勘前先貼上路名清單，一行一個路名，依序建立只有路名的斷面；同一條路要量幾個斷面就寫幾行。現場從清單或「完成」後的選單挑選要量的斷面。</p>
+      <textarea id="pre-in" class="fm-ta" rows="9" placeholder="指南路二段&#10;指南路二段&#10;萬壽路&#10;新光路一段"></textarea>
+      <p class="fm-hint" id="pre-n">將建立 0 個斷面</p></div>
+    <div class="acts"><button class="pri" id="pre-ok">建立</button></div>`, true);
+  const ta = sh.querySelector('#pre-in'), info = sh.querySelector('#pre-n');
+  const lines = ()=> ta.value.split(/\r?\n/).map(x=> x.replace(/　/g, ' ').trim()).filter(Boolean);
+  ta.addEventListener('input', ()=>{
+    const k = lines().length, has = surveyed().length + preCount();
+    info.textContent = `將建立 ${k} 個斷面` + (has && k ? `，接在現有 ${has} 個斷面之後` : '');
+  });
+  sh.querySelector('#pre-x').onclick = ()=> closeSheet();
+  sh.querySelector('#pre-ok').onclick = ()=>{
+    const L = lines();
+    if(!L.length) return toast('請貼上至少一個路名');
+    const keepCur = cur();
+    const kept = D.sections.filter(s=> !isBlank(s));     // 空白斷面移除，預建斷面接在現有斷面之後
+    const add = L.map(r=> Object.assign(blankSection(), {road:r, pre:true}));
+    D.sections = kept.concat(add);
+    const ci = D.sections.indexOf(keepCur);
+    D.cur = ci >= 0 ? ci : kept.length;                  // 原本停在空白斷面時，改停在第一個預建斷面
+    FM.sel = null; FM.insertAt = null; FM.tab = 'sec';
+    renumber(); save(); renderAll();
+    listSheet();
+    toast(`已建立 ${add.length} 個預建斷面`);
+  };
+  setTimeout(()=>{ try{ ta.focus(); }catch(e){} }, 50);
 }
 
 /* ═════════ 斷面 JPG ═════════ */
@@ -3769,11 +3849,11 @@ function listSheet(){
   const cnt = (arr, key) => arr.reduce((m,s)=>{ m[s[key]] = (m[s[key]]||0) + 1; return m; }, {});
   const seqC = cnt(secs, 'seq'), serC = cnt(secs, 'serial');
   const cards = secs.map((s,i)=>{
-    const blank = isBlank(s);
-    const st = blank ? ['blank','空白'] : (s.status === 'done' ? ['done','完成'] : ['draft','進行中']);
+    const blank = isBlank(s), pre = isPreEmpty(s);
+    const st = blank ? ['blank','空白'] : (pre ? ['pre','未開始'] : (s.status === 'done' ? ['done','完成'] : ['draft','進行中']));
     const miss = s.items.filter(it=> !(it.w > 0)).length;
     const dup = seqC[s.seq] > 1 || serC[s.serial] > 1;
-    const meta = blank ? '尚未輸入' : [
+    const meta = blank ? '尚未輸入' : pre ? '預建・尚未量測' : [
       s.locNote ? esc(s.locNote) : '',
       `加總 ${fmt(sumW(s))} m`, `${s.items.length} 項`, `📷 ${s.photos.length}`,
       s.startedAt ? `${hm(s.startedAt)}${s.finishedAt ? '–' + hm(s.finishedAt) : ''}` : '',
@@ -3786,15 +3866,18 @@ function listSheet(){
       <div class="t"><button class="num" data-num="${i}" title="調整編號">${esc(secLabel(s))}</button>
         <span class="rd">${esc(s.road || '（未填路名）')}${s.facing ? '・' + esc(s.facing) : ''}</span><span class="st ${st[0]}">${st[1]}</span></div>
       <div class="m">${meta}</div>
-      <div class="b"><button data-open="${i}">開啟</button>${blank ? '' : `<button data-jpg="${i}">JPG</button><button data-edit="${i}">編輯模式</button>`}<button class="danger" data-del="${i}">刪除</button></div>
+      <div class="b"><button data-open="${i}">開啟</button>${blank || pre ? '' : `<button data-jpg="${i}">JPG</button><button data-edit="${i}">編輯模式</button>`}<button class="danger" data-del="${i}">刪除</button></div>
     </div>`;
   }).join('');
+  const np = preCount();
   const sh = openSheet(`<h3><span>斷面清單（${exportable().length}）</span><button class="fm-tbtn" id="ls-new">＋ 新斷面</button><button class="fm-tbtn" id="ls-x">關閉</button></h3>
-    <div class="body">${cards}<p class="fm-hint">點編號可手動調整順序碼與流水號（手動改過的不會再被自動重排）。</p></div>
+    <div class="body">${np ? `<p class="fm-hint" style="margin:0 0 6px">已量 ${surveyed().length} 個・未開始的預建斷面 ${np} 個</p>` : ''}${cards}<button class="fm-mini" id="ls-pre" style="margin-top:4px">＋ 預建斷面（貼上路名清單）</button>
+      <p class="fm-hint">點編號可手動調整順序碼與流水號（手動改過的不會再被自動重排）。</p></div>
     <div class="acts row"><button id="ls-json">匯出 JSON</button><button id="ls-csv">匯出 CSV</button></div>`, true);
   sh.querySelector('#ls-x').onclick = ()=> closeSheet();
   sh.querySelector('#ls-json').onclick = ()=> exportJSON();
   sh.querySelector('#ls-csv').onclick = ()=> exportCSV();
+  sh.querySelector('#ls-pre').onclick = ()=> preSheet();
   sh.querySelector('#ls-new').onclick = ()=>{
     let idx = D.sections.findIndex(s=>isBlank(s));
     if(idx < 0){ D.sections.push(blankSection()); renumber(); idx = D.sections.length - 1; }
@@ -3808,7 +3891,7 @@ function listSheet(){
   sh.querySelectorAll('[data-num]').forEach(b=> b.onclick = ()=> numberSheet(+b.dataset.num));
   sh.querySelectorAll('[data-del]').forEach(b=> b.onclick = async ()=>{
     const i = +b.dataset.del, s = D.sections[i];
-    const ok = isBlank(s) || await ask(`刪除斷面 ${secLabel(s)}？`,
+    const ok = isBlank(s) || isPreEmpty(s) || await ask(`刪除斷面 ${secLabel(s)}？`,
       `${esc(s.road || '')}，${s.items.length} 個項目、${s.photos.length} 筆拍照紀錄將一併刪除，無法復原。<br>刪除後其後斷面的流水號會自動往前遞補（手動編號者除外）。`,
       [{label:'刪除', value:true, cls:'danger'}, {label:'取消', value:false}]);
     if(!ok){ listSheet(); return; }
@@ -3913,8 +3996,8 @@ function surveySnapshot(){
   return sv;
 }
 function exportJSON(){
-  const secs = exportable();
-  if(!secs.length && !pkExportable().length) return toast('目前沒有可匯出的資料');
+  const secs = surveyed(), np = preCount();                // 未開始的預建斷面只存在 survey 內，不產編輯模式配置
+  if(!secs.length && !np && !pkExportable().length) return toast('目前沒有可匯出的資料');
   const date = surveyDate(), schemes = {};
   secs.forEach(s=>{
     let k = secKey(s), n = 2;
@@ -3924,11 +4007,11 @@ function exportJSON(){
   const out = {type:'road-survey', version:1, project:`${date}_現勘`, exportedAt:isoTW(), survey:surveySnapshot(), schemes};
   download(`${date}_現勘.json`, JSON.stringify(out, null, 1), 'application/json');
   D.exportedAt = out.exportedAt; D.dirtyExport = false; save({exported:true});
-  toast(`已匯出 ${date}_現勘.json（${secs.length} 個斷面、${pkExportable().length} 筆供需）`);
+  toast(`已匯出 ${date}_現勘.json（${secs.length} 個斷面${np ? `＋未開始 ${np} 個` : ''}、${pkExportable().length} 筆供需）`);
 }
 const csvCell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
 function exportCSV(){
-  const secs = exportable();
+  const secs = surveyed();                                 // 未開始的預建斷面不列
   if(!secs.length) return toast('目前沒有可匯出的斷面');
   const head = ['順序碼','斷面流水號','路名','斷面方向','方向補充','位置註記','起始側','項次','元素類型',
     '寬度','淨寬','障礙物','行向','含側溝','側溝寬','側溝位置'];
@@ -3982,8 +4065,8 @@ $('fmImp').onchange = e=>{
 
 /* ═════════ 選單 ═════════ */
 $('fmMenuBtn').onclick = async ()=>{
-  const n = exportable().length;
-  const info = `共 ${n} 個斷面、${pkExportable().length} 筆供需・最後暫存 ${D.updatedAt ? hms(D.updatedAt) : '—'}・上次匯出 ${D.exportedAt ? D.exportedAt.slice(5,16).replace('T',' ') : '尚未匯出'}`;
+  const n = surveyed().length, np = preCount();
+  const info = `共 ${n} 個斷面${np ? `（另有未開始預建 ${np} 個）` : ''}、${pkExportable().length} 筆供需・最後暫存 ${D.updatedAt ? hms(D.updatedAt) : '—'}・上次匯出 ${D.exportedAt ? D.exportedAt.slice(5,16).replace('T',' ') : '尚未匯出'}`;
   const r = await ask('選單', `<p class="fm-hint" style="margin:0">${info}</p>`, [
     {label:'匯出 JSON（可匯回編輯模式）', value:'json', cls:'pri'},
     {label:'匯出斷面 CSV', value:'csv'},
@@ -3992,6 +4075,7 @@ $('fmMenuBtn').onclick = async ()=>{
     {label:'匯出供需 GeoJSON', value:'pkgeo'},
     {label:'設定：每輛佔用長度', value:'per'},
     {label:'新增時段（供需）', value:'round'},
+    {label:'預建斷面（貼上路名清單）', value:'pre'},
     {label:'匯入現勘 JSON', value:'imp'},
     {label:`設定：小數位數（目前 ${dec()} 位）`, value:'dec'},
     {label:'切換到編輯模式', value:'edit'},
@@ -4006,6 +4090,7 @@ $('fmMenuBtn').onclick = async ()=>{
   else if(r === 'per') perUnitSheet();
   else if(r === 'round'){ FM.tab = 'pk'; renderAll(); pkAddRound(); }
   else if(r === 'imp') $('fmImp').click();
+  else if(r === 'pre'){ FM.tab = 'sec'; renderAll(); preSheet(); }
   else if(r === 'dec'){
     const v = await ask('小數位數', '鍵盤可輸入的位數、清單與加總、JPG、CSV 都依此設定。建議開新專案時先設定好。<br>編輯模式不受影響。',
       [{label:'小數點後 1 位', value:1, cls: dec() === 1 ? 'pri' : ''}, {label:'小數點後 2 位', value:2, cls: dec() === 2 ? 'pri' : ''}, {label:'取消', value:null}]);
