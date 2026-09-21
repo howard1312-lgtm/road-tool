@@ -360,6 +360,11 @@ body.mode-field .wrap{display:none}
 #fm .pk-grid button.on{background:var(--ink);color:var(--card);border-color:var(--ink);border-left-color:var(--c)}
 .pk-slots{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
 #fm .pk-slots .fm-field{height:52px}
+.pk-xcat{position:relative}
+#fm .pk-xcat .fm-field{width:100%;padding-right:38px}
+#fm .pk-xcat .x{position:absolute;top:50%;right:5px;transform:translateY(-50%);width:28px;height:28px;padding:0;background:#fff;border:1px solid var(--rule);color:var(--fm-bad);font-size:12px}
+#fm .pk-slots .pk-addcat{border-style:dashed;background:transparent}
+#fm .pk-addcat .v{color:var(--fm-hl);font-size:15px}
 .pk-cnt{border:1px solid var(--rule);border-radius:6px;background:#fff;padding:6px 8px;margin-bottom:8px}
 .pk-cnt.in{border-color:var(--fm-hl)}
 .pk-cnt .t{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:5px}
@@ -2819,10 +2824,11 @@ function normalize(d){
   const base = newData();
   const out = Object.assign(base, d);
   out.sections = d.sections.map(s=> Object.assign(blankSection(), s, {gpsBusy:false}));
-  out.parking = (Array.isArray(d.parking) ? d.parking : []).map(p=> Object.assign(pkBlank(), p, {
+  out.parking = (Array.isArray(d.parking) ? d.parking : []).map(p=> pkMigrate(Object.assign(pkBlank(), p, {
     slots: Object.assign({}, p.slots), supUse: Object.assign({}, p.supUse), gps: Object.assign({a:null,b:null}, p.gps),
+    xcats: Array.isArray(p.xcats) ? p.xcats.slice() : [],
     rounds: (Array.isArray(p.rounds) && p.rounds.length) ? p.rounds.map(r=> Object.assign(pkRound(), r)) : [pkRound()],
-  }));
+  })));
   if(!out.sections.length) out.sections.push(blankSection());
   if(!out.parking.length) out.parking.push(pkBlank());
   out.cur = clamp(parseInt(out.cur)||0, 0, out.sections.length-1);
@@ -4055,7 +4061,22 @@ const PK_TYPES = [
   {k:'segother',     n:'其他（路段）',       seg:1, cnt:'停放數', vehs:['car','moto'], named:1},
 ];
 const PK_T = Object.fromEntries(PK_TYPES.map(t=>[t.k, t]));
-const CATS = [['gen','一般'],['acc','身障'],['load','裝卸'],['biz','營業用共用'],['oth','其他']];
+const CATS = [['gen','一般'],['acc','身障'],['load','裝卸'],['biz','營業用共用']];   // 固定類別；「其他」改為可新增多個自訂類別（xcats）
+const xcatKey = n => 'x:' + n;
+/* 路側汽車格的格位類別：固定四類＋自訂類別（每筆紀錄各自的 xcats 名稱清單） */
+const pkCats = p => CATS.concat((p.xcats || []).map(n=>[xcatKey(n), n, 1]));
+/* 舊資料的單一「其他」（oth）轉成名為「其他」的自訂類別 */
+function pkMigrate(p){
+  if(!Array.isArray(p.xcats)) p.xcats = [];
+  const has = p.slots.oth != null || p.supUse.oth != null || p.rounds.some(r=> r.inn && r.inn.oth != null);
+  if(!has) return p;
+  const k = xcatKey('其他');
+  if(!p.xcats.includes('其他')) p.xcats.push('其他');
+  if(p.slots.oth != null){ p.slots[k] = p.slots.oth; delete p.slots.oth; }
+  if(p.supUse.oth != null){ p.supUse[k] = p.supUse.oth; delete p.supUse.oth; }
+  p.rounds.forEach(r=>{ if(r.inn && r.inn.oth != null){ r.inn[k] = r.inn.oth; delete r.inn.oth; } });
+  return p;
+}
 const VEH = {car:'汽車', moto:'機車', bike:'自行車'};
 const vehName = v => VEH[v] || (v.startsWith('x:') ? v.slice(2) : v);
 const PER_DEF = {moto:0.7};                    // 每輛佔用長度預設值（自行車、汽車需自行設定）
@@ -4065,7 +4086,7 @@ const perUnit = v => {
 };
 const pkRound = () => ({id:newId(), name:'', startedAt:null, endedAt:null, inn:{}, out:{}});
 const pkBlank = () => ({id:newId(), no:0, noManual:false, type:'', typeLabel:'', slotted:true,
-  road:'', side:'', locNote:'', len:null, depth:null, slots:{}, supUse:{}, supVeh:'', vehs:null,
+  road:'', side:'', locNote:'', len:null, depth:null, slots:{}, supUse:{}, supVeh:'', vehs:null, xcats:[],
   note:'', rounds:[pkRound()], ri:0, gps:{a:null, b:null}, photos:[],
   startedAt:null, finishedAt:null, status:'draft'});
 const pkLabel = p => 'P' + (p.no || '?');
@@ -4092,7 +4113,7 @@ function pkSupplyRows(p){
   const t = pkT(p);
   if(!t || t.seg) return [];
   if(p.slotted){
-    if(t.cats) return CATS.map(([k,l])=>({key:k, label:l, slot:true, calc: p.slots[k] > 0 ? p.slots[k] : null}))
+    if(t.cats) return pkCats(p).map(([k,l])=>({key:k, label:l, slot:true, calc: p.slots[k] > 0 ? p.slots[k] : null}))
       .filter(r=> r.calc != null || p.supUse[r.key] > 0 || (pkRnd(p).inn[r.key] > 0));
     return [{key:'slot', label:'格數', slot:true, calc: p.slots.slot > 0 ? p.slots.slot : null}];
   }
@@ -4105,8 +4126,9 @@ function pkSupplyTotal(p){
   return pkSupplyRows(p).reduce((a,r)=>{ const s = pkSupply(p, r); return s != null ? a + s : a; }, 0);
 }
 /* 欄位讀寫：path 形式 len / depth / slots.gen / sup.slot / in.gen / out.car */
+const pkPath = path => { const i = path.indexOf('.'); return i < 0 ? [path, null] : [path.slice(0, i), path.slice(i + 1)]; };
 function pkGet(p, path){
-  const [a, b] = path.split('.');
+  const [a, b] = pkPath(path);
   if(b == null) return p[a];
   if(a === 'slots') return p.slots[b];
   if(a === 'sup') return p.supUse[b];
@@ -4115,7 +4137,7 @@ function pkGet(p, path){
   return null;
 }
 function pkSet(p, path, v){
-  const [a, b] = path.split('.');
+  const [a, b] = pkPath(path);
   if(b == null){ p[a] = v; return; }
   if(a === 'slots'){ if(v == null) delete p.slots[b]; else p.slots[b] = v; return; }
   if(a === 'sup'){ if(v == null) delete p.supUse[b]; else p.supUse[b] = v; return; }
@@ -4135,7 +4157,8 @@ function pkFields(p){
   if(t.grp){
     out.push({path:'len', label:'長度 m'}, {path:'depth', label:'縱深 m'});
     if(p.slotted){
-      (t.cats ? CATS : [['slot','格數']]).forEach(([k,l])=> out.push({path:'slots.' + k, label:`${l} 格數`}));
+      if(t.cats) pkCats(p).forEach(([k,l])=> out.push({path:'slots.' + k, label:`${l} 供給格數`}));
+      else out.push({path:'slots.slot', label:'供給格數'});
     } else {
       out.push({path:'sup.slot', label:'供給採用值'});
     }
@@ -4184,7 +4207,7 @@ function pkHead(){
         const v = pkGet(p, r.path) || 0, rate = pkRate(p, r);
         return `<div class="pk-chip${r.kind === 'in' ? ' in' : ''}"><b>${v}</b> ${esc(r.label.split('　')[0])}${rate != null ? `<i>${Math.round(rate*100)}%</i>` : ''}</div>`;
       }).join('')
-    : `<div class="fm-strip-empty">${t ? '請輸入格數或長度' : '請先選擇類型'}</div>`;
+    : `<div class="fm-strip-empty">${t ? '請輸入供給格數或長度' : '請先選擇類型'}</div>`;
 }
 function pkTypeGrid(p){
   const btn = t => `<button data-pkt="${t.k}" class="${p.type === t.k ? 'on' : ''}" style="--c:${t.seg ? '#B4462F' : '#2C5D74'}">${t.n}</button>`;
@@ -4199,7 +4222,7 @@ function pkNumField(p, f, extra){
   if(on && FM.buf != null) txt = FM.buf;
   else if(v != null && v !== '') txt = pkIsInt(f.path) ? String(v) : fmt(v);
   else txt = on ? '' : '—';
-  return `<button class="fm-field${on ? ' on' : ''}" data-pkf="${f.path}">
+  return `<button class="fm-field${on ? ' on' : ''}" data-pkf="${escA(f.path)}">
     <span class="k">${esc(f.label)}</span><span class="v${(v == null && !on) ? ' ph' : ''}${on ? ' typing' : ''}">${esc(txt)}</span></button>${extra || ''}`;
 }
 function pkMain(){
@@ -4229,9 +4252,13 @@ function pkMain(){
         <div class="fm-fields">${pkNumField(p, {path:'len', label:'長度 m'})}${pkNumField(p, {path:'depth', label:'縱深 m'})}</div>`;
       const rows = pkSupplyRows(p);
       if(p.slotted){
-        const cats = t.cats ? CATS : [['slot','格數']];
-        body += `<label class="fm-lbl">格數${t.cats ? '（依類別分開計算）' : ''}</label><div class="pk-slots">`;
-        cats.forEach(([k,l])=>{ body += pkNumField(p, {path:'slots.' + k, label:l}); });
+        const cats = t.cats ? pkCats(p) : [['slot','供給格數']];
+        body += `<label class="fm-lbl">供給格數${t.cats ? '（依類別分開計算）' : ''}</label><div class="pk-slots">`;
+        cats.forEach(([k,l,x])=>{
+          const f = pkNumField(p, {path:'slots.' + k, label:l});
+          body += x ? `<div class="pk-xcat">${f}<button class="x" data-pkxdel="${escA(l)}" title="移除此類別">✕</button></div>` : f;
+        });
+        if(t.cats) body += `<button class="fm-field pk-addcat" id="pk-addcat"><span class="k">其他類別</span><span class="v">＋ 自訂名稱</span></button>`;
         body += `</div>`;
         const tot = pkSupplyTotal(p);
         if(tot) body += `<div class="fm-msg nt">供給合計 ${tot} 格</div>`;
@@ -4250,16 +4277,16 @@ function pkMain(){
     // 計數器
     const crows = pkCounterRows(p);
     body += `<label class="fm-lbl">${t.grp ? '停放數量' : t.cnt}</label>`;
-    if(!crows.length) body += `<div class="fm-msg nt">先填格數或長度，才會出現計數器</div>`;
+    if(!crows.length) body += `<div class="fm-msg nt">先填供給格數或長度，才會出現計數器</div>`;
     crows.forEach(r=>{
       const v = pkGet(p, r.path) || 0, rate = pkRate(p, r);
       body += `<div class="pk-cnt${r.kind === 'in' ? ' in' : ''}">
         <div class="t"><span>${esc(r.label)}</span>${r.kind === 'in' && r.sup != null ? `<em>供給 ${r.sup}</em>` : ''}
           ${rate != null ? `<em class="${rate > 1.0001 ? 'bad' : ''}">使用率 ${Math.round(rate*100)}%</em>` : ''}
-          ${r.kind !== 'in' ? `<button class="x" data-pkdel="${r.veh}" title="移除車種">✕</button>` : ''}</div>
-        <div class="r"><button data-pkc="${r.path}:-1">−</button>
-          <button class="val${FM.pkSel === r.path ? ' on' : ''}" data-pkf="${r.path}">${FM.pkSel === r.path && FM.buf != null ? esc(FM.buf) : v}</button>
-          <button data-pkc="${r.path}:1">＋</button></div></div>`;
+          ${r.kind !== 'in' ? `<button class="x" data-pkdel="${escA(r.veh)}" title="移除車種">✕</button>` : ''}</div>
+        <div class="r"><button data-pkc="${escA(r.path)}:-1">−</button>
+          <button class="val${FM.pkSel === r.path ? ' on' : ''}" data-pkf="${escA(r.path)}">${FM.pkSel === r.path && FM.buf != null ? esc(FM.buf) : v}</button>
+          <button data-pkc="${escA(r.path)}:1">＋</button></div></div>`;
     });
     body += `<div class="fm-opts"><button class="fm-mini" id="pk-addveh">＋ 車種</button>
       ${p.rounds.length > 1 ? `<button class="fm-mini" id="pk-rname">時段名稱</button>` : ''}</div>`;
@@ -4277,7 +4304,10 @@ function pkMain(){
   const kp = FM.pkSel && !FM.kpHidden
     ? `<div class="fm-fixed"><div class="fm-panel"><div class="fm-ph"><span class="nm">${esc(pkSelLabel(p))}</span>
         <button class="fm-mini fm-hide" id="pk-hide">▼ 收起</button></div></div>
-        <div class="fm-kp">${KP.flat().map(k=>`<button data-pkk="${k}" class="${k === 'next' ? 'next' : (KPL[k] ? 'fn' : '')}">${KPL[k] || k}</button>`).join('')}</div></div>`
+        <div class="fm-kp">${KP.flat().map(k=>{
+          const ent = k === 'next' && FM.pkSel.startsWith('slots.');   // 供給格數：右下角為「輸入」
+          return `<button data-pkk="${ent ? 'enter' : k}" class="${k === 'next' ? 'next' : (KPL[k] ? 'fn' : '')}">${ent ? '輸入' : (KPL[k] || k)}</button>`;
+        }).join('')}</div></div>`
     : '';
   return `<div class="fm-scroll">${body}<div style="height:8px"></div></div>${kp}`;
 }
@@ -4309,7 +4339,7 @@ function pkBind(main){
   main.querySelectorAll('[data-pkveh]').forEach(b=> b.onclick = ()=>{ p.supVeh = b.dataset.pkveh; save(); renderAll(); });
   main.querySelectorAll('[data-pkf]').forEach(b=> b.onclick = ()=>{ FM.pkSel = b.dataset.pkf; FM.buf = null; FM.kpHidden = false; pkTouch(p); save(); renderAll(); });
   main.querySelectorAll('[data-pkc]').forEach(b=> b.onclick = ()=>{
-    const [path, d] = b.dataset.pkc.split(':');
+    const s = b.dataset.pkc, i = s.lastIndexOf(':'), path = s.slice(0, i), d = s.slice(i + 1);
     const v = Math.max(0, (pkGet(p, path) || 0) + (+d));
     pkSet(p, path, v || (v === 0 ? 0 : null));
     if(FM.pkSel === path) FM.buf = null;
@@ -4339,6 +4369,30 @@ function pkBind(main){
     p.vehs = pkVehs(p).concat([key]);
     save(); renderAll();
   };
+  if(q('#pk-addcat')) q('#pk-addcat').onclick = async ()=>{
+    let nm = await askText('其他類別名稱', '例：計程車格、充電格、臨停接送格', '');
+    if(nm === null) return;
+    nm = nm.replace(/　/g, ' ').trim();
+    if(!nm) return toast('請輸入類別名稱');
+    if(pkCats(p).some(([,l])=> l === nm)) return toast(`已有「${nm}」類別`);
+    p.xcats = (p.xcats || []).concat([nm]);
+    FM.pkSel = 'slots.' + xcatKey(nm); FM.buf = null; FM.kpHidden = false;
+    pkTouch(p); save(); renderAll();
+  };
+  main.querySelectorAll('[data-pkxdel]').forEach(b=> b.onclick = async ()=>{
+    const nm = b.dataset.pkxdel, k = xcatKey(nm);
+    const used = p.slots[k] != null || p.supUse[k] != null || p.rounds.some(r=> r.inn[k] != null);
+    if(used){
+      const ok = await ask(`移除「${esc(nm)}」？`, '這個類別的供給格數與各時段的停放數會一併刪除。',
+        [{label:'移除', value:true, cls:'danger'}, {label:'取消', value:false}]);
+      if(!ok) return;
+    }
+    p.xcats = (p.xcats || []).filter(x=> x !== nm);
+    delete p.slots[k]; delete p.supUse[k];
+    p.rounds.forEach(r=>{ delete r.inn[k]; });
+    if(FM.pkSel === 'slots.' + k || FM.pkSel === 'in.' + k){ FM.pkSel = null; FM.buf = null; }
+    save(); renderAll();
+  });
   if(q('#pk-rname')) q('#pk-rname').onclick = async ()=>{
     const r = pkRnd(p);
     const nm = await askText('時段名稱', '例：晨峰、昏峰', r.name || '');
@@ -4365,6 +4419,7 @@ function pkGPS(p, which){
 function pkKey(k){
   const p = pkCur(), path = FM.pkSel;
   if(!path) return;
+  if(k === 'enter'){ FM.pkSel = null; FM.buf = null; save(); renderAll(); return; }
   if(k === 'next' || k === 'prev'){
     const fs = pkFields(p), i = fs.findIndex(f=>f.path === path), j = i + (k === 'next' ? 1 : -1);
     if(i < 0 || j < 0){ toast('已是第一項'); return; }
@@ -4414,7 +4469,7 @@ async function pkCopyPrev(){
     if(!ok) return;
   }
   Object.assign(p, {road:prev.road, type:prev.type, typeLabel:prev.typeLabel, slotted:prev.slotted,
-    side:prev.side, supVeh:prev.supVeh, vehs: prev.vehs ? prev.vehs.slice() : null,
+    side:prev.side, supVeh:prev.supVeh, vehs: prev.vehs ? prev.vehs.slice() : null, xcats:(prev.xcats || []).slice(),
     locNote:'', len:null, depth:null, slots:{}, supUse:{}, note:'',
     rounds:[pkRound()], ri:0, gps:{a:null, b:null}, photos:[], startedAt:null, finishedAt:null, status:'draft'});
   delete p.modifiedAt;
@@ -4439,7 +4494,7 @@ async function pkDone(){
   const info = [
     ['紀錄', `${esc(pkLabel(p))}　${esc(p.road)}　${esc(pkTypeName(p))}${p.side ? '　' + (p.side === 'odd' ? '單號側' : '雙號側') : ''}`],
     ['位置註記', esc(p.locNote || '—')],
-    ['供給', t.grp ? (sup ? `${sup} 格／輛` : '<span class="bad">未填格數或長度</span>') : '路段型不計供給'],
+    ['供給', t.grp ? (sup ? `${sup} 格／輛` : '<span class="bad">未填供給格數或長度</span>') : '路段型不計供給'],
     ['數量', cnt ? detail : '<span class="bad">尚未計數</span>'],
     ['時段', p.rounds.length > 1 ? `${p.rounds.length} 個時段` : (pkRnd(p).startedAt ? `調查時間 ${hm(pkRnd(p).startedAt)}` : '尚未計數')],
     ['拍照紀錄', p.photos.length ? `${p.photos.length} 筆` : '<span class="bad">0 筆</span>'],
@@ -4563,10 +4618,13 @@ function exportPkCSV(){
   const extraVeh = [];
   rows.forEach(({p})=> pkVehs(p).forEach(v=>{ if(!PK_VEH_COLS.includes(v) && !extraVeh.includes(v)) extraVeh.push(v); }));
   const vehCols = PK_VEH_COLS.concat(extraVeh);
+  const xnames = [];                      // 所有紀錄出現過的自訂類別（依出現順序）
+  rows.forEach(({p, t})=>{ if(t.cats) (p.xcats || []).forEach(n=>{ if(!xnames.includes(n)) xnames.push(n); }); });
+  const catCols = CATS.concat(xnames.map(n=>[xcatKey(n), n]));
   const head = ['P編號','紀錄型態','時段','路名','類型','側別','位置註記','長度','縱深']
-    .concat(CATS.map(([,l])=>l + '格數'), ['格數（單一）','供給換算值','供給採用值','供給合計'])
-    .concat(CATS.map(([,l])=>l + '停放'), ['範圍內停放（單一）'])
-    .concat(CATS.map(([,l])=>l + '使用率'), ['使用率（單一）'])
+    .concat(catCols.map(([,l])=>l + '供給格數'), ['供給格數（單一）','供給換算值','供給採用值','供給合計'])
+    .concat(catCols.map(([,l])=>l + '停放'), ['範圍內停放（單一）'])
+    .concat(catCols.map(([,l])=>l + '使用率'), ['使用率（單一）'])
     .concat(vehCols.map(v=>'範圍外違停_' + vehName(v)))
     .concat(vehCols.map(v=>'路段計數_' + vehName(v)))
     .concat(['調查開始','調查結束','GPS起點','GPS終點','備註']);
@@ -4576,15 +4634,15 @@ function exportPkCSV(){
     cell.push('P' + p.no, t.seg ? '路段' : '群組', p.rounds.length > 1 ? (r.name || '時段' + (ri+1)) : (r.name || ''),
       p.road, pkTypeName(p), p.side === 'odd' ? '單號側' : (p.side === 'even' ? '雙號側' : ''),
       p.locNote, p.len > 0 ? fmt(p.len) : '', p.depth > 0 ? fmt(p.depth) : '');
-    CATS.forEach(([k])=> cell.push(t.cats && p.slots[k] > 0 ? p.slots[k] : ''));
+    catCols.forEach(([k])=> cell.push(t.cats && p.slots[k] > 0 ? p.slots[k] : ''));
     cell.push(!t.cats && p.slots.slot > 0 ? p.slots.slot : '',
       single && single.calc != null && !p.slotted ? single.calc : '',
       p.supUse.slot > 0 ? p.supUse.slot : '',
       t.grp ? pkSupplyTotal(p) : '');
-    CATS.forEach(([k])=> cell.push(t.cats && r.inn[k] != null ? r.inn[k] : ''));
+    catCols.forEach(([k])=> cell.push(t.cats && r.inn[k] != null ? r.inn[k] : ''));
     cell.push(!t.cats && r.inn.slot != null ? r.inn.slot : '');
-    CATS.forEach(([k])=>{
-      const row = sr.find(x=>x.key === k), sup = row ? pkSupply(p, row) : null;
+    catCols.forEach(([k])=>{
+      const row = t.cats ? sr.find(x=>x.key === k) : null, sup = row ? pkSupply(p, row) : null;
       cell.push(sup > 0 && r.inn[k] != null ? (r.inn[k] / sup).toFixed(3) : '');
     });
     const supS = single ? pkSupply(p, single) : null;
