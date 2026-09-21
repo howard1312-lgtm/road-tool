@@ -189,7 +189,7 @@ body.mode-field .wrap{display:none}
 .fm-compass{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 #fm .fm-compass button{height:52px;background:#fff;border:1px solid var(--rule);color:var(--ink);font-size:18px;font-weight:700}
 #fm .fm-compass button.on{background:var(--ink);color:var(--card);border-color:var(--ink)}
-.fm-compass .ctr{display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--ink-soft);text-align:center;line-height:1.25}
+.fm-compass .ctr{display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;color:var(--ink-soft);text-align:center;line-height:1.25}
 .fm-gps{margin-top:14px;font-size:13px;color:var(--ink-soft);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .fm-gps.bad{color:var(--fm-bad)}
 #fm .fm-link{background:none;border:none;color:var(--fm-hl);text-decoration:underline;font-size:14px;padding:4px}
@@ -353,6 +353,32 @@ body.mode-field .wrap{display:none}
   background:var(--fm-hl);color:#fff;border:1px solid var(--fm-hl);text-align:left}
 #fm .fm-expand span{font-weight:700;font-size:16px;flex:none}
 #fm .fm-expand small{font-size:14px;opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 停車供需 */
+.pk-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+#fm .pk-grid button{min-height:50px;padding:4px 6px;background:#fff;border:1px solid var(--rule);color:var(--ink);
+  font-size:14px;line-height:1.2;border-left:5px solid var(--c,#999);text-align:left}
+#fm .pk-grid button.on{background:var(--ink);color:var(--card);border-color:var(--ink);border-left-color:var(--c)}
+.pk-slots{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+#fm .pk-slots .fm-field{height:52px}
+.pk-cnt{border:1px solid var(--rule);border-radius:6px;background:#fff;padding:6px 8px;margin-bottom:8px}
+.pk-cnt.in{border-color:var(--fm-hl)}
+.pk-cnt .t{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:5px}
+.pk-cnt .t span{flex:1;font-weight:700;min-width:0}
+.pk-cnt .t em{font-style:normal;font-size:12px;color:var(--ink-soft);white-space:nowrap}
+.pk-cnt .t em.bad{color:var(--fm-bad);font-weight:700}
+#fm .pk-cnt .t .x{width:30px;height:30px;padding:0;background:#fff;border:1px solid var(--rule);color:var(--fm-bad);font-size:13px;flex:none}
+.pk-cnt .r{display:flex;gap:8px;align-items:stretch}
+#fm .pk-cnt .r button{flex:1;min-height:52px;font-size:26px;font-weight:700;background:var(--card);border:1px solid var(--ink);color:var(--ink)}
+#fm .pk-cnt .r .val{flex:1.3;font-family:"JetBrains Mono",monospace;background:#fff}
+#fm .pk-cnt .r .val.on{border-color:var(--fm-hl);box-shadow:0 0 0 3px var(--fm-hl-soft)}
+.fm-strip.pk-bar{height:auto;min-height:34px;flex-wrap:wrap;gap:4px;padding:3px;border-color:var(--rule);align-items:center}
+.pk-chip{display:flex;align-items:baseline;gap:4px;font-size:12px;color:var(--ink);background:var(--card);
+  border:1px solid var(--rule);border-radius:99px;padding:2px 8px;white-space:nowrap}
+.pk-chip.in{background:var(--fm-hl-soft);border-color:var(--fm-hl)}
+.pk-chip b{font-family:"JetBrains Mono",monospace;font-size:15px}
+.pk-chip i{font-style:normal;color:var(--ink-soft)}
+.pk-type{flex:1;min-width:0;font-size:13px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm .pk-rounds button{min-height:28px;padding:0 10px;font-size:13px}
 .fm-pk{padding:30px 16px;text-align:center;color:var(--ink-soft);line-height:1.7}
 </style>
 </head>
@@ -2715,7 +2741,7 @@ refreshSchemes();
 </div>
 <script>
 /* ═══════════════════════ 現勘模式 ═══════════════════════
-   資料一律以「面向方位的左至右」順序儲存（sec.items）；起始側只影響清單顯示與輸入順序。
+   資料一律以「斷面方向的左至右」順序儲存（sec.items）；起始側只影響清單顯示與輸入順序。
    每次輸入都寫入 localStorage（road-survey），讀寫皆以 try/catch 保護。 */
 (function(){
 const $ = id => document.getElementById(id);
@@ -2765,6 +2791,7 @@ const serialOf = i => i < 26 ? String.fromCharCode(65+i) : (i < 52 ? String.from
 const seqStr = n => String(n).padStart(2,'0');
 const secLabel = s => `${seqStr(s.seq)}·${s.serial}`;
 function renumber(){
+  if(D.parking) pkRenumber();
   D.sections.forEach((s,i)=>{
     if(!s.seqManual) s.seq = i+1;
     if(!s.serialManual) s.serial = serialOf(i);
@@ -2779,7 +2806,7 @@ const blankSection = () => ({id:newId(), seq:0, serial:'', road:'', facing:'', f
   startSide:null, step:1, items:[], gps:null, gpsErr:null, startedAt:null, finishedAt:null,
   status:'draft', photos:[], wIdx:0});
 const newData = () => ({type:'road-survey', version:1, createdAt:isoTW(), updatedAt:null, exportedAt:null,
-  dirtyExport:false, cur:0, sections:[blankSection()], parking:[], settings:{}});
+  dirtyExport:false, cur:0, pcur:0, sections:[blankSection()], parking:[pkBlank()], settings:{}});
 const isBlank = s => !s.road && !s.facing && !s.items.length && !s.photos.length && !s.locNote && !s.facingNote && !s.startSide;
 const cur = () => D.sections[D.cur];
 const exportable = () => D.sections.filter(s=>!isBlank(s));
@@ -2792,9 +2819,14 @@ function normalize(d){
   const base = newData();
   const out = Object.assign(base, d);
   out.sections = d.sections.map(s=> Object.assign(blankSection(), s, {gpsBusy:false}));
-  out.parking = Array.isArray(d.parking) ? d.parking : [];
+  out.parking = (Array.isArray(d.parking) ? d.parking : []).map(p=> Object.assign(pkBlank(), p, {
+    slots: Object.assign({}, p.slots), supUse: Object.assign({}, p.supUse), gps: Object.assign({a:null,b:null}, p.gps),
+    rounds: (Array.isArray(p.rounds) && p.rounds.length) ? p.rounds.map(r=> Object.assign(pkRound(), r)) : [pkRound()],
+  }));
   if(!out.sections.length) out.sections.push(blankSection());
+  if(!out.parking.length) out.parking.push(pkBlank());
   out.cur = clamp(parseInt(out.cur)||0, 0, out.sections.length-1);
+  out.pcur = clamp(parseInt(out.pcur)||0, 0, out.parking.length-1);
   return out;
 }
 
@@ -2809,6 +2841,7 @@ function load(){
     }
   }
   if(!D) D = newData();
+  if(D.tab === 'pk') FM.tab = 'pk';
   renumber();
   setSaveStatus(ok, ok ? `已載入 ${exportable().length} 個斷面` : '');
 }
@@ -2973,13 +3006,13 @@ function toast(msg){
 /* ═════════ 繪製：頂端 ═════════ */
 function renderTabs(){
   fmEl.querySelectorAll('.fm-tabs button').forEach(b=> b.classList.toggle('on', b.dataset.tab === FM.tab));
-  $('fmSecHead').hidden = FM.tab !== 'sec';
-  $('fmBar').hidden = FM.tab !== 'sec';
+  $('fmSecHead').hidden = false;
+  $('fmBar').hidden = false;
 }
 const STEP_NAMES = ['基本','起始','項目','寬度'];
 function canStep(sec, n){
   if(n <= 1) return '';
-  if(!sec.road.trim() || !sec.facing) return '請先填寫路名與面向方位';
+  if(!sec.road.trim() || !sec.facing) return '請先填寫路名與斷面方向';
   if(n >= 3 && !sec.startSide) return '請先選擇起始側';
   if(n >= 4 && !sec.items.length) return '請先建立斷面項目';
   return '';
@@ -3015,7 +3048,7 @@ function renderStrip(){
   }).join('');
 }
 function renderBar(){
-  const sec = cur(), n = sec.photos.length;
+  const n = (FM.tab === 'pk' ? pkCur() : cur()).photos.length;
   const c = $('fmShotN');
   c.innerHTML = `${n}<small>筆</small>`;
   c.classList.toggle('zero', n === 0);
@@ -3025,8 +3058,13 @@ function renderBar(){
 function renderMain(){
   const main = $('fmMain');
   if(FM.tab === 'pk'){
-    main.innerHTML = `<div class="fm-scroll"><div class="fm-pk">停車供需紀錄將在第三階段加入。<br>（編號 P1、P2…，與斷面共用路名清單、拍照紀錄與匯出）</div></div>`;
-    main.dataset.step = 'pk';
+    const sc0 = main.querySelector('.fm-scroll');
+    const keep0 = (sc0 && main.dataset.step === 'pk' && main.dataset.sid === pkCur().id) ? sc0.scrollTop : 0;
+    main.innerHTML = pkMain();
+    main.dataset.step = 'pk'; main.dataset.sid = pkCur().id;
+    pkBind(main);
+    const sc1 = main.querySelector('.fm-scroll');
+    if(sc1) sc1.scrollTop = keep0;
     return;
   }
   const sec = cur();
@@ -3046,7 +3084,8 @@ function renderMain(){
 }
 function renderAll(){
   renderTabs();
-  if(FM.tab === 'sec'){ renderSecHead(); renderBar(); }
+  if(FM.tab === 'sec') renderSecHead(); else pkHead();
+  renderBar();
   renderMain();
 }
 
@@ -3078,11 +3117,11 @@ function step1(sec){
     <input type="text" id="f-road" list="f-roads" value="${escA(sec.road)}" autocomplete="off" enterkeyhint="done" placeholder="例：指南路二段">
     <datalist id="f-roads">${roadNames().map(r=>`<option value="${escA(r)}">`).join('')}</datalist>
     ${roads.length ? `<div class="fm-opts">${roads.map(r=>`<button class="fm-chip" data-road="${escA(r)}">${esc(r)}</button>`).join('')}</div>` : ''}
-    <label class="fm-lbl">面向方位 <span class="req">*</span></label>
+    <label class="fm-lbl">斷面方向（面向方向） <span class="req">*</span></label>
     <div class="fm-compass">${COMPASS.map(d=> d
       ? `<button data-face="${d}" class="${sec.facing === d ? 'on' : ''}">${d}</button>`
-      : `<div class="ctr">面向<br><b style="font-size:16px;color:var(--ink)">${esc(sec.facing || '—')}</b></div>`).join('')}</div>
-    <input type="text" id="f-fnote" value="${escA(sec.facingNote)}" placeholder="方位補充（選填），如：往萬壽路方向" style="margin-top:8px" enterkeyhint="done">
+      : `<div class="ctr">斷面方向<br><b style="font-size:16px;color:var(--ink)">${esc(sec.facing || '—')}</b></div>`).join('')}</div>
+    <input type="text" id="f-fnote" value="${escA(sec.facingNote)}" placeholder="方向補充（選填），如：往萬壽路方向" style="margin-top:8px" enterkeyhint="done">
     <label class="fm-lbl" for="f-loc">位置註記（選填）</label>
     <input type="text" id="f-loc" value="${escA(sec.locNote)}" placeholder="例：45號前、近萬壽路口" enterkeyhint="done">
     <div class="fm-gps" id="fmGps"></div>
@@ -3110,10 +3149,10 @@ function bind1(sec, main){
 function step2(sec){
   const face = esc(sec.facing) + (sec.facingNote ? `（${esc(sec.facingNote)}）` : '');
   return `<div class="fm-scroll">
-    <p class="fm-hint" style="margin-top:0">面向 <b style="color:var(--ink)">${face}</b>，量測者從哪一側開始量？</p>
+    <p class="fm-hint" style="margin-top:0">斷面方向 <b style="color:var(--ink)">${face}</b>，量測者從哪一側開始量？</p>
     <div class="fm-side">
-      <button data-side="L" class="${sec.startSide === 'L' ? 'on' : ''}"><span class="arw">⇤</span>從左側開始<small>面向方位的左手邊</small></button>
-      <button data-side="R" class="${sec.startSide === 'R' ? 'on' : ''}"><span class="arw">⇥</span>從右側開始<small>面向方位的右手邊</small></button>
+      <button data-side="L" class="${sec.startSide === 'L' ? 'on' : ''}"><span class="arw">⇤</span>從左側開始<small>斷面方向的左手邊</small></button>
+      <button data-side="R" class="${sec.startSide === 'R' ? 'on' : ''}"><span class="arw">⇥</span>從右側開始<small>斷面方向的右手邊</small></button>
     </div>
     <p class="fm-hint">起始側只影響現場點選與輸入順序；資料、斷面圖與匯出一律由左至右。</p>
   </div>`;
@@ -3424,11 +3463,17 @@ $('fmStrip').addEventListener('click', e=>{
 });
 fmEl.querySelector('.fm-tabs').addEventListener('click', e=>{
   const b = e.target.closest('[data-tab]'); if(!b) return;
-  FM.tab = b.dataset.tab; renderAll();
+  FM.tab = b.dataset.tab; FM.pkSel = null; FM.buf = null; FM.kpHidden = false;
+  D.tab = FM.tab; save(); renderAll();
+});
+$('fmSteps').addEventListener('click', e=>{               // 供需：多時段切換
+  const b = e.target.closest('[data-pkr]');
+  if(b && FM.tab === 'pk'){ pkCur().ri = +b.dataset.pkr; FM.pkSel = null; save(); renderAll(); }
 });
 
 /* ═════════ 底部操作列 ═════════ */
 $('fmShot').onclick = ()=>{
+  if(FM.tab === 'pk') return pkShot();
   const sec = cur(); touch(sec);
   const t = isoTW(); sec.photos.push(t); save(); renderBar();
   try{ if(navigator.vibrate) navigator.vibrate(30); }catch(e){}
@@ -3436,8 +3481,8 @@ $('fmShot').onclick = ()=>{
 };
 $('fmShotN').onclick = ()=> photoSheet();
 function photoSheet(){
-  const sec = cur();
-  const sh = openSheet(`<h3><span>拍照紀錄 ${esc(secLabel(sec))}（${sec.photos.length} 筆）</span><button class="fm-tbtn" id="ph-x">關閉</button></h3>
+  const sec = FM.tab === 'pk' ? pkCur() : cur();
+  const sh = openSheet(`<h3><span>拍照紀錄 ${esc(FM.tab === 'pk' ? pkLabel(sec) : secLabel(sec))}（${sec.photos.length} 筆）</span><button class="fm-tbtn" id="ph-x">關閉</button></h3>
     <div class="body">${sec.photos.length
       ? `<ul class="fm-ph-list">${sec.photos.map((t,i)=>`<li><span>${i+1}.　${hms(t)}</span><button data-pdel="${i}">刪除</button></li>`).join('')}</ul>
          <p class="fm-hint">誤觸或誤拍可刪除（按兩下確認）。</p>`
@@ -3449,6 +3494,7 @@ function photoSheet(){
   });
 }
 $('fmCopy').onclick = async ()=>{
+  if(FM.tab === 'pk') return pkCopyPrev();
   if(D.cur === 0){ toast('這是第一個斷面，沒有上一個可複製'); return; }
   const prev = D.sections[D.cur-1], sec = cur();
   if(isBlank(prev)){ toast('上一個斷面是空白的'); return; }
@@ -3470,10 +3516,11 @@ $('fmCopy').onclick = async ()=>{
   toast(`已複製 ${secLabel(prev)}，確認項目後再輸入寬度`);
 };
 $('fmDone').onclick = async ()=>{
+  if(FM.tab === 'pk') return pkDone();
   const sec = cur();
   if(isBlank(sec)){ toast('此斷面尚未輸入任何資料'); return; }
   if(!sec.road.trim() || !sec.facing){
-    const r = await ask('尚未填寫必填欄位', '路名與面向方位為必填。', [{label:'前往填寫', value:true, cls:'pri'}, {label:'取消', value:false}]);
+    const r = await ask('尚未填寫必填欄位', '路名與斷面方向為必填。', [{label:'前往填寫', value:true, cls:'pri'}, {label:'取消', value:false}]);
     if(r){ sec.step = 1; save(); renderAll(); }
     return;
   }
@@ -3483,7 +3530,7 @@ $('fmDone').onclick = async ()=>{
   const missing = arr.filter(it=> !(it.w > 0));
   const bads = arr.map(it=>({it, c:itemCheck(sec, it)})).filter(x=>x.c && x.c.bad);
   const rows = [
-    ['斷面', `${esc(secLabel(sec))}　${esc(sec.road)}　面向${esc(sec.facing)}${sec.facingNote ? '（' + esc(sec.facingNote) + '）' : ''}`],
+    ['斷面', `${esc(secLabel(sec))}　${esc(sec.road)}　斷面方向 ${esc(sec.facing)}${sec.facingNote ? '（' + esc(sec.facingNote) + '）' : ''}`],
     ['位置註記', esc(sec.locNote || '—')],
     ['加總寬度', `<b>${fmt(sumW(sec))} m</b>（${arr.length} 項）`],
     ['拍照紀錄', sec.photos.length ? `${sec.photos.length} 筆` : '<span class="bad">0 筆｜尚未記錄拍照，確定完成？</span>'],
@@ -3610,7 +3657,7 @@ async function makeSectionJPG(sec, finishedAt){
   x.fillText(fitText(x, t1, dW * 0.62), P, P + 48);
   const w1 = Math.min(x.measureText(t1).width, dW * 0.62);
   x.font = `500 36px ${JPG_FONT}`;
-  x.fillText(fitText(x, `面向${sec.facing}${sec.facingNote ? '（' + sec.facingNote + '）' : ''}`, dW - w1 - 40), P + w1 + 40, P + 48);
+  x.fillText(fitText(x, `斷面方向 ${sec.facing}${sec.facingNote ? '（' + sec.facingNote + '）' : ''}`, dW - w1 - 40), P + w1 + 40, P + 48);
   const tm = sec.startedAt ? `${sec.startedAt.slice(0,10)} ${hm(sec.startedAt)}–${hm(finishedAt)}` : (finishedAt ? finishedAt.slice(0,16).replace('T',' ') : '—');
   const gps = sec.gps ? `${sec.gps.lat.toFixed(6)}, ${sec.gps.lng.toFixed(6)}（±${sec.gps.acc} m）` : '未記錄';
   x.font = `400 28px ${JPG_FONT}`; x.fillStyle = '#3F4A45';
@@ -3710,7 +3757,7 @@ function jpgSheet(i){
 }
 
 /* ═════════ 斷面清單 ═════════ */
-$('fmListBtn').onclick = ()=> listSheet();
+$('fmListBtn').onclick = ()=> FM.tab === 'pk' ? pkListSheet() : listSheet();
 function listSheet(){
   const secs = D.sections;
   const cnt = (arr, key) => arr.reduce((m,s)=>{ m[s[key]] = (m[s[key]]||0) + 1; return m; }, {});
@@ -3809,7 +3856,7 @@ async function openInEdit(i){
 /* ═════════ 匯出／匯入 ═════════ */
 const secKey = s => `${seqStr(s.seq)}_${safeFile(s.serial)}_${safeFile(s.road || '未命名')}`;
 function surveyDate(){
-  const t = D.sections.map(s=>s.startedAt).filter(Boolean).sort()[0];
+  const t = D.sections.map(s=>s.startedAt).concat((D.parking || []).map(p=>p.startedAt)).filter(Boolean).sort()[0];
   return ymd(t || isoTW());
 }
 /* 現勘斷面 → 編輯模式配置（左至右；寬度全部鎖定） */
@@ -3853,6 +3900,7 @@ function surveySnapshot(){
   const keepCur = D.sections[D.cur];
   sv.sections = sv.sections.filter((s,i)=> !isBlank(D.sections[i]));
   sv.sections.forEach(s=>{ delete s.gpsBusy; });
+  sv.parking = sv.parking.filter((p,i)=> !pkIsBlank(D.parking[i]));
   const ci = sv.sections.findIndex(s=> keepCur && s.id === keepCur.id);
   sv.cur = ci >= 0 ? ci : Math.max(0, sv.sections.length - 1);
   delete sv.dirtyExport;
@@ -3860,7 +3908,7 @@ function surveySnapshot(){
 }
 function exportJSON(){
   const secs = exportable();
-  if(!secs.length) return toast('目前沒有可匯出的斷面');
+  if(!secs.length && !pkExportable().length) return toast('目前沒有可匯出的資料');
   const date = surveyDate(), schemes = {};
   secs.forEach(s=>{
     let k = secKey(s), n = 2;
@@ -3870,13 +3918,13 @@ function exportJSON(){
   const out = {type:'road-survey', version:1, project:`${date}_現勘`, exportedAt:isoTW(), survey:surveySnapshot(), schemes};
   download(`${date}_現勘.json`, JSON.stringify(out, null, 1), 'application/json');
   D.exportedAt = out.exportedAt; D.dirtyExport = false; save({exported:true});
-  toast(`已匯出 ${date}_現勘.json（${secs.length} 個斷面）`);
+  toast(`已匯出 ${date}_現勘.json（${secs.length} 個斷面、${pkExportable().length} 筆供需）`);
 }
 const csvCell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
 function exportCSV(){
   const secs = exportable();
   if(!secs.length) return toast('目前沒有可匯出的斷面');
-  const head = ['順序碼','斷面流水號','路名','面向方位','方位補充','位置註記','起始側','項次','元素類型',
+  const head = ['順序碼','斷面流水號','路名','斷面方向','方向補充','位置註記','起始側','項次','元素類型',
     '寬度','淨寬','障礙物','行向','含側溝','側溝寬','側溝位置'];
   const rows = [head];
   secs.forEach(s=>{
@@ -3929,10 +3977,15 @@ $('fmImp').onchange = e=>{
 /* ═════════ 選單 ═════════ */
 $('fmMenuBtn').onclick = async ()=>{
   const n = exportable().length;
-  const info = `共 ${n} 個斷面・最後暫存 ${D.updatedAt ? hms(D.updatedAt) : '—'}・上次匯出 ${D.exportedAt ? D.exportedAt.slice(5,16).replace('T',' ') : '尚未匯出'}`;
+  const info = `共 ${n} 個斷面、${pkExportable().length} 筆供需・最後暫存 ${D.updatedAt ? hms(D.updatedAt) : '—'}・上次匯出 ${D.exportedAt ? D.exportedAt.slice(5,16).replace('T',' ') : '尚未匯出'}`;
   const r = await ask('選單', `<p class="fm-hint" style="margin:0">${info}</p>`, [
     {label:'匯出 JSON（可匯回編輯模式）', value:'json', cls:'pri'},
-    {label:'匯出 CSV', value:'csv'},
+    {label:'匯出斷面 CSV', value:'csv'},
+    {label:'匯出供需 CSV', value:'pkcsv'},
+    {label:'匯出供需彙整 CSV', value:'pksum'},
+    {label:'匯出供需 GeoJSON', value:'pkgeo'},
+    {label:'設定：每輛佔用長度', value:'per'},
+    {label:'新增時段（供需）', value:'round'},
     {label:'匯入現勘 JSON', value:'imp'},
     {label:`設定：小數位數（目前 ${dec()} 位）`, value:'dec'},
     {label:'切換到編輯模式', value:'edit'},
@@ -3941,6 +3994,11 @@ $('fmMenuBtn').onclick = async ()=>{
   ]);
   if(r === 'json') exportJSON();
   else if(r === 'csv') exportCSV();
+  else if(r === 'pkcsv') exportPkCSV();
+  else if(r === 'pksum') exportPkSummary();
+  else if(r === 'pkgeo') exportPkGeo();
+  else if(r === 'per') perUnitSheet();
+  else if(r === 'round'){ FM.tab = 'pk'; renderAll(); pkAddRound(); }
   else if(r === 'imp') $('fmImp').click();
   else if(r === 'dec'){
     const v = await ask('小數位數', '鍵盤可輸入的位數、清單與加總、JPG、CSV 都依此設定。建議開新專案時先設定好。<br>編輯模式不受影響。',
@@ -3951,7 +4009,7 @@ $('fmMenuBtn').onclick = async ()=>{
   else if(r === 'new') newProject();
 };
 async function newProject(){
-  const n = exportable().length;
+  const n = exportable().length + pkExportable().length;
   if(n && D.dirtyExport !== false){
     const r = await ask('尚有未匯出的資料', `目前 ${n} 個斷面的最新內容尚未匯出。開新專案會清空全部資料，流水號從 A 重新開始。`,
       [{label:'先匯出 JSON', value:'exp', cls:'pri'}, {label:'不匯出，直接清空', value:'clear', cls:'danger'}, {label:'取消', value:null}]);
@@ -3977,6 +4035,637 @@ function setMode(m){
 }
 window.setToolMode = setMode;
 document.getElementById('toField').onclick = ()=> setMode('field');
+
+/* ═══════════════════════ 停車供需紀錄（第三階段） ═══════════════════════
+   群組型：一群停車空間（格位或停放區），算供給與使用率。
+   路段型：整條路段的黃線／紅線／騎樓／人行道／無格位停車，只記各車種數量，不算供給。 */
+const PK_TYPES = [
+  {k:'carside',      n:'路側汽車格',     grp:1, slotted:true,  cats:1, veh:'car'},
+  {k:'motoside',     n:'路側機車格',     grp:1, slotted:true,  veh:'moto'},
+  {k:'motowalk',     n:'人行道機車格',   grp:1, slotted:true,  veh:'moto'},
+  {k:'motobay',      n:'機車停車彎',     grp:1, slotted:true,  veh:'moto'},
+  {k:'motowalkfree', n:'人行道機車停放區', grp:1, slotted:false, veh:'moto'},
+  {k:'bikefree',     n:'無格位自行車停放區', grp:1, slotted:false, veh:'bike'},
+  {k:'othergrp',     n:'其他（群組）',   grp:1, slotted:true,  veh:'moto', named:1},
+  {k:'segyellow',    n:'黃線停車（路段）',   seg:1, cnt:'停放數', vehs:['car','moto']},
+  {k:'segred',       n:'紅線違停（路段）',   seg:1, cnt:'違停數', vehs:['car','moto']},
+  {k:'segarcade',    n:'騎樓違停（路段）',   seg:1, cnt:'違停數', vehs:['moto']},
+  {k:'segwalk',      n:'人行道違停（路段）', seg:1, cnt:'違停數', vehs:['moto']},
+  {k:'segfree',      n:'無格位停車（路段）', seg:1, cnt:'停放數', vehs:['car','moto']},
+  {k:'segother',     n:'其他（路段）',       seg:1, cnt:'停放數', vehs:['car','moto'], named:1},
+];
+const PK_T = Object.fromEntries(PK_TYPES.map(t=>[t.k, t]));
+const CATS = [['gen','一般'],['acc','身障'],['load','裝卸'],['biz','營業用共用'],['oth','其他']];
+const VEH = {car:'汽車', moto:'機車', bike:'自行車'};
+const vehName = v => VEH[v] || (v.startsWith('x:') ? v.slice(2) : v);
+const PER_DEF = {moto:0.7};                    // 每輛佔用長度預設值（自行車、汽車需自行設定）
+const perUnit = v => {
+  const s = (D.settings && D.settings.perUnit) || {};
+  return s[v] > 0 ? s[v] : (PER_DEF[v] || null);
+};
+const pkRound = () => ({id:newId(), name:'', startedAt:null, endedAt:null, inn:{}, out:{}});
+const pkBlank = () => ({id:newId(), no:0, noManual:false, type:'', typeLabel:'', slotted:true,
+  road:'', side:'', locNote:'', len:null, depth:null, slots:{}, supUse:{}, supVeh:'', vehs:null,
+  note:'', rounds:[pkRound()], ri:0, gps:{a:null, b:null}, photos:[],
+  startedAt:null, finishedAt:null, status:'draft'});
+const pkLabel = p => 'P' + (p.no || '?');
+const pkT = p => PK_T[p.type] || null;
+const pkTypeName = p => p.typeLabel ? `${p.typeLabel}${pkT(p) && pkT(p).seg ? '（路段）' : ''}` : (pkT(p) ? pkT(p).n : '（未選類型）');
+const pkRnd = p => p.rounds[clamp(p.ri|0, 0, p.rounds.length-1)] || p.rounds[0];
+function pkCounts(p){
+  return p.rounds.reduce((a,r)=> a + Object.values(r.inn).reduce((x,v)=>x+(v||0),0) + Object.values(r.out).reduce((x,v)=>x+(v||0),0), 0);
+}
+const pkIsBlank = p => !p.road && !p.type && !p.locNote && !p.photos.length && !pkCounts(p) &&
+  !(p.len > 0) && !Object.values(p.slots).some(v=>v > 0);
+const pkList = () => D.parking;
+const pkCur = () => { if(!D.parking.length) D.parking.push(pkBlank()); return D.parking[clamp(D.pcur|0, 0, D.parking.length-1)]; };
+const pkExportable = () => D.parking.filter(p=>!pkIsBlank(p));
+function pkRenumber(){ D.parking.forEach((p,i)=>{ if(!p.noManual) p.no = i+1; }); }
+const pkVehs = p => {
+  const t = pkT(p);
+  if(p.vehs && p.vehs.length) return p.vehs;
+  if(!t) return [];
+  return t.seg ? t.vehs.slice() : [t.veh];
+};
+/* 供給：有格位用格數，無格位用長度 ÷ 每輛佔用長度（無條件捨去），採用值可手動覆寫 */
+function pkSupplyRows(p){
+  const t = pkT(p);
+  if(!t || t.seg) return [];
+  if(p.slotted){
+    if(t.cats) return CATS.map(([k,l])=>({key:k, label:l, slot:true, calc: p.slots[k] > 0 ? p.slots[k] : null}))
+      .filter(r=> r.calc != null || p.supUse[r.key] > 0 || (pkRnd(p).inn[r.key] > 0));
+    return [{key:'slot', label:'格數', slot:true, calc: p.slots.slot > 0 ? p.slots.slot : null}];
+  }
+  const veh = p.supVeh || t.veh, per = perUnit(veh);
+  const calc = (p.len > 0 && per > 0) ? Math.floor(p.len / per) : null;
+  return [{key:'slot', label:`長度換算（${vehName(veh)} ${per ? per + ' m/輛' : '未設定'}）`, calc, veh, per}];
+}
+const pkSupply = (p, row) => (p.supUse[row.key] > 0 ? p.supUse[row.key] : (row.calc != null ? row.calc : null));
+function pkSupplyTotal(p){
+  return pkSupplyRows(p).reduce((a,r)=>{ const s = pkSupply(p, r); return s != null ? a + s : a; }, 0);
+}
+/* 欄位讀寫：path 形式 len / depth / slots.gen / sup.slot / in.gen / out.car */
+function pkGet(p, path){
+  const [a, b] = path.split('.');
+  if(b == null) return p[a];
+  if(a === 'slots') return p.slots[b];
+  if(a === 'sup') return p.supUse[b];
+  if(a === 'in') return pkRnd(p).inn[b];
+  if(a === 'out') return pkRnd(p).out[b];
+  return null;
+}
+function pkSet(p, path, v){
+  const [a, b] = path.split('.');
+  if(b == null){ p[a] = v; return; }
+  if(a === 'slots'){ if(v == null) delete p.slots[b]; else p.slots[b] = v; return; }
+  if(a === 'sup'){ if(v == null) delete p.supUse[b]; else p.supUse[b] = v; return; }
+  const r = pkRnd(p);
+  if(a === 'in' || a === 'out'){
+    const box = a === 'in' ? r.inn : r.out;
+    if(v == null) delete box[b]; else box[b] = v;
+    if(!r.startedAt) r.startedAt = isoTW();
+    r.endedAt = isoTW();
+  }
+}
+const pkIsInt = path => !path.startsWith('len') && !path.startsWith('depth');
+/* 依表單順序列出可用數字鍵盤輸入的欄位 */
+function pkFields(p){
+  const t = pkT(p), out = [];
+  if(!t) return out;
+  if(t.grp){
+    out.push({path:'len', label:'長度 m'}, {path:'depth', label:'縱深 m'});
+    if(p.slotted){
+      (t.cats ? CATS : [['slot','格數']]).forEach(([k,l])=> out.push({path:'slots.' + k, label:`${l} 格數`}));
+    } else {
+      out.push({path:'sup.slot', label:'供給採用值'});
+    }
+  }
+  pkCounterRows(p).forEach(r=> out.push({path:r.path, label:r.label.replace('　', ' ')}));
+  return out;
+}
+/* 計數器列：群組型＝各類別「範圍內停放」＋各車種「範圍外違停」；路段型＝各車種一組 */
+function pkCounterRows(p){
+  const t = pkT(p), rows = [];
+  if(!t) return rows;
+  if(t.grp){
+    pkSupplyRows(p).forEach(r=>{
+      const sup = pkSupply(p, r);
+      rows.push({path:'in.' + r.key, label: (r.slot ? r.label : '範圍內') + '　停放', sup, cat:r.key, kind:'in'});
+    });
+    pkVehs(p).forEach(v=> rows.push({path:'out.' + v, label:`${vehName(v)}　範圍外違停`, veh:v, kind:'out'}));
+  } else {
+    pkVehs(p).forEach(v=> rows.push({path:'out.' + v, label:`${vehName(v)}　${t.cnt}`, veh:v, kind:'seg'}));
+  }
+  return rows;
+}
+const pkRate = (p, row) => (row.kind === 'in' && row.sup > 0) ? (pkGet(p, row.path) || 0) / row.sup : null;
+
+/* ── 繪製 ── */
+function pkHead(){
+  const p = pkCur(), t = pkT(p);
+  $('fmId').textContent = pkLabel(p);
+  const rounds = p.rounds.length > 1
+    ? p.rounds.map((r,i)=>`<button data-pkr="${i}" class="${i === (p.ri|0) ? 'on' : ''}">${esc(r.name || '時段' + (i+1))}</button>`).join('')
+    : '';
+  $('fmSteps').innerHTML = rounds
+    ? `<span class="fm-seg pk-rounds">${rounds}</span>`
+    : `<span class="pk-type">${esc(pkTypeName(p))}</span>`;
+  const sup = t && t.grp ? pkSupplyTotal(p) : null;
+  const inn = pkCounterRows(p).filter(r=>r.kind === 'in').reduce((a,r)=> a + (pkGet(p, r.path) || 0), 0);
+  const other = pkCounterRows(p).filter(r=>r.kind !== 'in').reduce((a,r)=> a + (pkGet(p, r.path) || 0), 0);
+  $('fmSum').innerHTML = t && t.grp
+    ? `<span class="lbl" style="font-size:11px;color:var(--ink-soft)">供給／停放<br></span><b>${sup || 0}</b> / ${inn}`
+    : `<span class="lbl" style="font-size:11px;color:var(--ink-soft)">合計<br></span><b>${other}</b> 輛`;
+  const el = $('fmStrip');
+  el.className = 'fm-strip pk-bar';
+  const rows = pkCounterRows(p);
+  el.innerHTML = rows.length
+    ? rows.map(r=>{
+        const v = pkGet(p, r.path) || 0, rate = pkRate(p, r);
+        return `<div class="pk-chip${r.kind === 'in' ? ' in' : ''}"><b>${v}</b> ${esc(r.label.split('　')[0])}${rate != null ? `<i>${Math.round(rate*100)}%</i>` : ''}</div>`;
+      }).join('')
+    : `<div class="fm-strip-empty">${t ? '請輸入格數或長度' : '請先選擇類型'}</div>`;
+}
+function pkTypeGrid(p){
+  const btn = t => `<button data-pkt="${t.k}" class="${p.type === t.k ? 'on' : ''}" style="--c:${t.seg ? '#B4462F' : '#2C5D74'}">${t.n}</button>`;
+  return `<label class="fm-lbl">類型 <span class="req">*</span></label>
+    <div class="pk-grid">${PK_TYPES.filter(t=>t.grp).map(btn).join('')}</div>
+    <div class="fm-lbl" style="margin:8px 0 5px">整條路段（不算供給，只記各車種數量）</div>
+    <div class="pk-grid">${PK_TYPES.filter(t=>t.seg).map(btn).join('')}</div>`;
+}
+function pkNumField(p, f, extra){
+  const on = FM.pkSel === f.path, v = pkGet(p, f.path);
+  let txt;
+  if(on && FM.buf != null) txt = FM.buf;
+  else if(v != null && v !== '') txt = pkIsInt(f.path) ? String(v) : fmt(v);
+  else txt = on ? '' : '—';
+  return `<button class="fm-field${on ? ' on' : ''}" data-pkf="${f.path}">
+    <span class="k">${esc(f.label)}</span><span class="v${(v == null && !on) ? ' ph' : ''}${on ? ' typing' : ''}">${esc(txt)}</span></button>${extra || ''}`;
+}
+function pkMain(){
+  const p = pkCur(), t = pkT(p);
+  const roads = roadNames().filter(r=> r !== p.road).slice(-4).reverse();
+  let body = `<label class="fm-lbl" for="pk-road">路名 <span class="req">*</span></label>
+    <input type="text" id="pk-road" list="f-roads" value="${escA(p.road)}" autocomplete="off" enterkeyhint="done" placeholder="例：指南路二段">
+    <datalist id="f-roads">${roadNames().map(r=>`<option value="${escA(r)}">`).join('')}</datalist>
+    ${roads.length ? `<div class="fm-opts">${roads.map(r=>`<button class="fm-chip" data-road="${escA(r)}">${esc(r)}</button>`).join('')}</div>` : ''}
+    ${pkTypeGrid(p)}`;
+  if(t){
+    if(t.named) body += `<label class="fm-lbl" for="pk-name">類型名稱</label>
+      <input type="text" id="pk-name" value="${escA(p.typeLabel)}" placeholder="例：計程車招呼站" enterkeyhint="done">`;
+    if(t.grp) body += `<label class="fm-lbl">格位</label>
+      <div class="fm-opts"><span class="fm-seg">
+        <button data-pkslot="1" class="${p.slotted ? 'on' : ''}">有格位</button>
+        <button data-pkslot="" class="${!p.slotted ? 'on' : ''}">無格位（長度換算）</button></span></div>`;
+    body += `<label class="fm-lbl">側別（選填）</label>
+      <div class="fm-opts"><span class="fm-seg">
+        <button data-pkside="odd" class="${p.side === 'odd' ? 'on' : ''}">單號側</button>
+        <button data-pkside="even" class="${p.side === 'even' ? 'on' : ''}">雙號側</button>
+        <button data-pkside="" class="${!p.side ? 'on' : ''}">未填</button></span></div>
+      <label class="fm-lbl" for="pk-loc">位置註記（選填）</label>
+      <input type="text" id="pk-loc" value="${escA(p.locNote)}" placeholder="例：45號前、A巷口至B巷口" enterkeyhint="done">`;
+    if(t.grp){
+      body += `<label class="fm-lbl">尺寸（選填，建議填寫）</label>
+        <div class="fm-fields">${pkNumField(p, {path:'len', label:'長度 m'})}${pkNumField(p, {path:'depth', label:'縱深 m'})}</div>`;
+      const rows = pkSupplyRows(p);
+      if(p.slotted){
+        const cats = t.cats ? CATS : [['slot','格數']];
+        body += `<label class="fm-lbl">格數${t.cats ? '（依類別分開計算）' : ''}</label><div class="pk-slots">`;
+        cats.forEach(([k,l])=>{ body += pkNumField(p, {path:'slots.' + k, label:l}); });
+        body += `</div>`;
+        const tot = pkSupplyTotal(p);
+        if(tot) body += `<div class="fm-msg nt">供給合計 ${tot} 格</div>`;
+      } else {
+        const r = rows[0], veh = p.supVeh || t.veh;
+        body += `<label class="fm-lbl">供給（長度換算）</label>
+          <div class="fm-opts"><span class="lb">換算車種</span><span class="fm-seg">
+            ${['car','moto','bike'].map(v=>`<button data-pkveh="${v}" class="${veh === v ? 'on' : ''}">${VEH[v]}</button>`).join('')}</span></div>
+          <div class="fm-fields" style="margin-top:6px">
+            <div class="fm-field" style="pointer-events:none"><span class="k">${esc(r.label)}</span><span class="v${r.calc == null ? ' ph' : ''}">${r.calc == null ? '—' : r.calc}</span></div>
+            ${pkNumField(p, {path:'sup.slot', label:'採用值（可覆寫）'})}</div>`;
+        if(!r.per) body += `<div class="fm-msg bad">尚未設定「${vehName(veh)}」的每輛佔用長度，請先到「⋯ → 設定：每輛佔用長度」設定</div>`;
+        else if(r.calc == null) body += `<div class="fm-msg nt">填入長度後自動換算（長度 ÷ ${r.per} m，無條件捨去）</div>`;
+      }
+    }
+    // 計數器
+    const crows = pkCounterRows(p);
+    body += `<label class="fm-lbl">${t.grp ? '停放數量' : t.cnt}</label>`;
+    if(!crows.length) body += `<div class="fm-msg nt">先填格數或長度，才會出現計數器</div>`;
+    crows.forEach(r=>{
+      const v = pkGet(p, r.path) || 0, rate = pkRate(p, r);
+      body += `<div class="pk-cnt${r.kind === 'in' ? ' in' : ''}">
+        <div class="t"><span>${esc(r.label)}</span>${r.kind === 'in' && r.sup != null ? `<em>供給 ${r.sup}</em>` : ''}
+          ${rate != null ? `<em class="${rate > 1.0001 ? 'bad' : ''}">使用率 ${Math.round(rate*100)}%</em>` : ''}
+          ${r.kind !== 'in' ? `<button class="x" data-pkdel="${r.veh}" title="移除車種">✕</button>` : ''}</div>
+        <div class="r"><button data-pkc="${r.path}:-1">−</button>
+          <button class="val${FM.pkSel === r.path ? ' on' : ''}" data-pkf="${r.path}">${FM.pkSel === r.path && FM.buf != null ? esc(FM.buf) : v}</button>
+          <button data-pkc="${r.path}:1">＋</button></div></div>`;
+    });
+    body += `<div class="fm-opts"><button class="fm-mini" id="pk-addveh">＋ 車種</button>
+      ${p.rounds.length > 1 ? `<button class="fm-mini" id="pk-rname">時段名稱</button>` : ''}</div>`;
+    // 位置與備註
+    const g = p.gps || {};
+    body += `<label class="fm-lbl">位置（選填）</label>
+      <div class="fm-opts">
+        <button class="fm-mini${g.a ? ' on' : ''}" id="pk-gpsa">${g.a ? '起點已記錄' : '記錄位置'}</button>
+        <button class="fm-mini${g.b ? ' on' : ''}" id="pk-gpsb">${g.b ? '終點已記錄' : '記錄終點'}</button>
+        ${(g.a || g.b) ? `<button class="fm-mini" id="pk-gpsx">清除</button>` : ''}</div>
+      ${g.a ? `<div class="fm-msg nt">起點 ${g.a.lat.toFixed(6)}, ${g.a.lng.toFixed(6)}${g.b ? `｜終點 ${g.b.lat.toFixed(6)}, ${g.b.lng.toFixed(6)}` : ''}</div>` : ''}
+      <label class="fm-lbl" for="pk-note">備註（選填）</label>
+      <input type="text" id="pk-note" value="${escA(p.note)}" enterkeyhint="done">`;
+  }
+  const kp = FM.pkSel && !FM.kpHidden
+    ? `<div class="fm-fixed"><div class="fm-panel"><div class="fm-ph"><span class="nm">${esc(pkSelLabel(p))}</span>
+        <button class="fm-mini fm-hide" id="pk-hide">▼ 收起</button></div></div>
+        <div class="fm-kp">${KP.flat().map(k=>`<button data-pkk="${k}" class="${k === 'next' ? 'next' : (KPL[k] ? 'fn' : '')}">${KPL[k] || k}</button>`).join('')}</div></div>`
+    : '';
+  return `<div class="fm-scroll">${body}<div style="height:8px"></div></div>${kp}`;
+}
+function pkSelLabel(p){
+  const f = pkFields(p).find(x=>x.path === FM.pkSel);
+  if(f) return f.label;
+  const r = pkCounterRows(p).find(x=>x.path === FM.pkSel);
+  return r ? r.label.replace('　', ' ') : '輸入';
+}
+function pkBind(main){
+  const p = pkCur();
+  const q = s => main.querySelector(s);
+  const onText = (id, key)=>{
+    const el = q('#' + id); if(!el) return;
+    el.addEventListener('input', ()=>{ p[key] = el.value; pkTouch(p); save(); pkHead(); });
+    el.addEventListener('keydown', e=>{ if(e.key === 'Enter') el.blur(); });
+  };
+  onText('pk-road', 'road'); onText('pk-loc', 'locNote'); onText('pk-note', 'note'); onText('pk-name', 'typeLabel');
+  main.querySelectorAll('[data-road]').forEach(b=> b.onclick = ()=>{ p.road = b.dataset.road; pkTouch(p); save(); renderAll(); });
+  main.querySelectorAll('[data-pkt]').forEach(b=> b.onclick = ()=>{
+    const t = PK_T[b.dataset.pkt];
+    p.type = t.k; p.slotted = t.seg ? false : !!t.slotted;
+    if(!t.named) p.typeLabel = '';
+    p.vehs = null; FM.pkSel = null; FM.buf = null;
+    pkTouch(p); save(); renderAll();
+  });
+  main.querySelectorAll('[data-pkslot]').forEach(b=> b.onclick = ()=>{ p.slotted = !!b.dataset.pkslot; save(); renderAll(); });
+  main.querySelectorAll('[data-pkside]').forEach(b=> b.onclick = ()=>{ p.side = b.dataset.pkside; pkTouch(p); save(); renderAll(); });
+  main.querySelectorAll('[data-pkveh]').forEach(b=> b.onclick = ()=>{ p.supVeh = b.dataset.pkveh; save(); renderAll(); });
+  main.querySelectorAll('[data-pkf]').forEach(b=> b.onclick = ()=>{ FM.pkSel = b.dataset.pkf; FM.buf = null; FM.kpHidden = false; pkTouch(p); save(); renderAll(); });
+  main.querySelectorAll('[data-pkc]').forEach(b=> b.onclick = ()=>{
+    const [path, d] = b.dataset.pkc.split(':');
+    const v = Math.max(0, (pkGet(p, path) || 0) + (+d));
+    pkSet(p, path, v || (v === 0 ? 0 : null));
+    if(FM.pkSel === path) FM.buf = null;
+    pkTouch(p); save(); renderAll();
+    try{ if(navigator.vibrate) navigator.vibrate(12); }catch(e){}
+  });
+  main.querySelectorAll('[data-pkk]').forEach(b=> b.onclick = ()=> pkKey(b.dataset.pkk));
+  main.querySelectorAll('[data-pkdel]').forEach(b=> b.onclick = ()=>{
+    const v = b.dataset.pkdel;
+    p.vehs = pkVehs(p).filter(x=> x !== v);
+    delete pkRnd(p).out[v];
+    save(); renderAll();
+  });
+  if(q('#pk-hide')) q('#pk-hide').onclick = ()=>{ FM.kpHidden = true; renderMain(); };
+  if(q('#pk-addveh')) q('#pk-addveh').onclick = async ()=>{
+    const cur = pkVehs(p);
+    const opts = ['car','moto','bike'].filter(v=> !cur.includes(v)).map(v=>({label:VEH[v], value:v}));
+    opts.push({label:'其他車種（自訂名稱）', value:'x'}, {label:'取消', value:null});
+    const r = await ask('新增車種', '', opts);
+    if(!r) return;
+    let key = r;
+    if(r === 'x'){
+      const nm = await askText('車種名稱', '例：大客車、貨車', '');
+      if(!nm || !nm.trim()) return;
+      key = 'x:' + nm.trim();
+    }
+    p.vehs = pkVehs(p).concat([key]);
+    save(); renderAll();
+  };
+  if(q('#pk-rname')) q('#pk-rname').onclick = async ()=>{
+    const r = pkRnd(p);
+    const nm = await askText('時段名稱', '例：晨峰、昏峰', r.name || '');
+    if(nm !== null){ r.name = nm.trim(); save(); renderAll(); }
+  };
+  if(q('#pk-gpsa')) q('#pk-gpsa').onclick = ()=> pkGPS(p, 'a');
+  if(q('#pk-gpsb')) q('#pk-gpsb').onclick = ()=> pkGPS(p, 'b');
+  if(q('#pk-gpsx')) q('#pk-gpsx').onclick = ()=>{ p.gps = {a:null, b:null}; save(); renderAll(); };
+}
+function pkTouch(p){ if(!p.startedAt) p.startedAt = isoTW(); }
+function pkGPS(p, which){
+  if(!navigator.geolocation){ toast('此裝置不支援定位'); return; }
+  const id = p.id;
+  toast('定位中…');
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const r = D.parking.find(x=>x.id === id); if(!r) return;
+    r.gps = r.gps || {a:null, b:null};
+    r.gps[which] = {lat:+pos.coords.latitude.toFixed(7), lng:+pos.coords.longitude.toFixed(7),
+      acc:Math.round(pos.coords.accuracy), t:isoTW()};
+    save(); renderAll(); toast(`已記錄${which === 'a' ? '起點' : '終點'}（±${r.gps[which].acc} m）`);
+  }, err=> toast((err && err.code === 1) ? '未允許定位' : '定位失敗'),
+     {enableHighAccuracy:true, timeout:15000, maximumAge:20000});
+}
+function pkKey(k){
+  const p = pkCur(), path = FM.pkSel;
+  if(!path) return;
+  if(k === 'next' || k === 'prev'){
+    const fs = pkFields(p), i = fs.findIndex(f=>f.path === path), j = i + (k === 'next' ? 1 : -1);
+    if(i < 0 || j < 0){ toast('已是第一項'); return; }
+    if(j >= fs.length){ FM.buf = null; renderAll(); toast('已是最後一項，確認無誤請按下方「完成」'); return; }
+    FM.pkSel = fs[j].path; FM.buf = null; save(); renderAll(); return;
+  }
+  const int = pkIsInt(path);
+  let b;
+  if(k === 'clr') b = '';
+  else if(k === 'bs'){
+    const v = pkGet(p, path);
+    b = FM.buf != null ? FM.buf : (v != null ? (int ? String(v) : fmt(v).replace(/\.?0+$/, '')) : '');
+    b = b.slice(0, -1);
+  } else {
+    b = FM.buf != null ? FM.buf : '';
+    if(k === '.'){ if(int || b.includes('.')) return; b = (b || '0') + '.'; }
+    else {
+      if(b.includes('.') && b.split('.')[1].length >= dec()) return;
+      if(!b.includes('.') && b.replace(/^0+/, '').length >= (int ? 4 : 2)) return;
+      b = b === '0' ? k : b + k;
+    }
+  }
+  FM.buf = b;
+  let v = parseFloat(b);
+  if(!isFinite(v) || v < 0) v = null;
+  else if(int) v = Math.round(v);
+  else { const f = Math.pow(10, dec()); v = Math.round(v * f) / f; }
+  pkSet(p, path, v);
+  pkTouch(p); save(); renderAll();
+}
+
+/* ── 底部操作列（供需） ── */
+function pkShot(){
+  const p = pkCur(); pkTouch(p);
+  const t = isoTW(); p.photos.push(t); save(); renderBar();
+  try{ if(navigator.vibrate) navigator.vibrate(30); }catch(e){}
+  toast(`📷 已記錄 ${hms(t)}（${pkLabel(p)} 第 ${p.photos.length} 筆）`);
+}
+async function pkCopyPrev(){
+  const i = D.parking.indexOf(pkCur());
+  if(i <= 0){ toast('這是第一筆，沒有上一筆可複製'); return; }
+  const prev = D.parking[i-1], p = pkCur();
+  if(pkIsBlank(prev)){ toast('上一筆是空白的'); return; }
+  if(!pkIsBlank(p)){
+    const ok = await ask('覆蓋目前紀錄？', `${esc(pkLabel(p))} 已有內容，複製上一筆會取代（拍照紀錄也會清空）。`,
+      [{label:'覆蓋', value:true, cls:'danger'}, {label:'取消', value:false}]);
+    if(!ok) return;
+  }
+  Object.assign(p, {road:prev.road, type:prev.type, typeLabel:prev.typeLabel, slotted:prev.slotted,
+    side:prev.side, supVeh:prev.supVeh, vehs: prev.vehs ? prev.vehs.slice() : null,
+    locNote:'', len:null, depth:null, slots:{}, supUse:{}, note:'',
+    rounds:[pkRound()], ri:0, gps:{a:null, b:null}, photos:[], startedAt:null, finishedAt:null, status:'draft'});
+  delete p.modifiedAt;
+  FM.pkSel = null; FM.buf = null;
+  pkTouch(p); save(); renderAll();
+  toast(`已複製 ${pkLabel(prev)} 的路名與類型`);
+}
+async function pkDone(){
+  const p = pkCur();
+  if(pkIsBlank(p)){ toast('這筆尚未輸入任何資料'); return; }
+  if(!p.road.trim() || !p.type){
+    toast('請先填寫路名與類型');
+    return;
+  }
+  const t = pkT(p), rows = pkCounterRows(p);
+  const sup = t.grp ? pkSupplyTotal(p) : null;
+  const cnt = rows.reduce((a,r)=> a + (pkGet(p, r.path) || 0), 0);
+  const detail = rows.map(r=>{
+    const v = pkGet(p, r.path) || 0, rate = pkRate(p, r);
+    return `${esc(r.label.replace('　', ' '))}：${v}${rate != null ? `（使用率 ${Math.round(rate*100)}%）` : ''}`;
+  }).join('<br>') || '—';
+  const info = [
+    ['紀錄', `${esc(pkLabel(p))}　${esc(p.road)}　${esc(pkTypeName(p))}${p.side ? '　' + (p.side === 'odd' ? '單號側' : '雙號側') : ''}`],
+    ['位置註記', esc(p.locNote || '—')],
+    ['供給', t.grp ? (sup ? `${sup} 格／輛` : '<span class="bad">未填格數或長度</span>') : '路段型不計供給'],
+    ['數量', cnt ? detail : '<span class="bad">尚未計數</span>'],
+    ['時段', p.rounds.length > 1 ? `${p.rounds.length} 個時段` : (pkRnd(p).startedAt ? `調查時間 ${hm(pkRnd(p).startedAt)}` : '尚未計數')],
+    ['拍照紀錄', p.photos.length ? `${p.photos.length} 筆` : '<span class="bad">0 筆</span>'],
+  ];
+  const warn = (t.grp && !sup) || !cnt;
+  const ok = await ask(`完成 ${pkLabel(p)}`,
+    `<table class="fm-sum-tbl">${info.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>`,
+    [{label: warn ? '仍要完成' : '確定完成', value:true, cls:'pri'}, {label:'返回修改', value:false}]);
+  if(!ok) return;
+  p.status = 'done';
+  if(!p.finishedAt) p.finishedAt = isoTW(); else p.modifiedAt = isoTW();
+  let idx = D.parking.findIndex((x,i)=> i > D.parking.indexOf(p) && pkIsBlank(x));
+  if(idx < 0){ D.parking.push(pkBlank()); pkRenumber(); idx = D.parking.length - 1; }
+  const label = pkLabel(p);
+  D.pcur = idx; FM.pkSel = null; FM.buf = null;
+  closeSheet(); save(); renderAll();
+  toast(`${label} 已完成，開始下一筆 ${pkLabel(pkCur())}`);
+}
+async function pkAddRound(){
+  const p = pkCur();
+  if(pkIsBlank(p)){ toast('請先建立這筆紀錄'); return; }
+  const nm = await askText('新增時段', '時段名稱（可留空），例：晨峰、昏峰', '');
+  if(nm === null) return;
+  const r = pkRound(); r.name = nm.trim();
+  p.rounds.push(r); p.ri = p.rounds.length - 1;
+  p.status = 'draft';
+  save(); renderAll();
+  toast('已新增時段，供給不需重填，直接計數即可');
+}
+
+/* ── 清單 ── */
+function pkListSheet(){
+  const cnt = D.parking.reduce((m,p)=>{ m[p.no] = (m[p.no]||0)+1; return m; }, {});
+  const cards = D.parking.map((p,i)=>{
+    const blank = pkIsBlank(p);
+    const st = blank ? ['blank','空白'] : (p.status === 'done' ? ['done','完成'] : ['draft','進行中']);
+    const t = pkT(p);
+    const sup = t && t.grp ? pkSupplyTotal(p) : null;
+    const rows = pkCounterRows(p);
+    const inn = rows.filter(r=>r.kind === 'in').reduce((a,r)=> a + (pkGet(p, r.path) || 0), 0);
+    const oth = rows.filter(r=>r.kind !== 'in').reduce((a,r)=> a + (pkGet(p, r.path) || 0), 0);
+    const meta = blank ? '尚未輸入' : [
+      esc(pkTypeName(p)), p.side ? (p.side === 'odd' ? '單' : '雙') : '', esc(p.locNote || ''),
+      t && t.grp ? `供給 ${sup || 0}・停放 ${inn}` : `合計 ${oth} 輛`,
+      t && t.grp && oth ? `違停 ${oth}` : '',
+      p.rounds.length > 1 ? `${p.rounds.length} 時段` : '',
+      `📷 ${p.photos.length}`, cnt[p.no] > 1 ? '<span class="bad">⚠ 編號重複</span>' : '',
+      p.noManual ? '手動編號' : '',
+    ].filter(Boolean).join('・');
+    return `<div class="fm-sec${i === (D.pcur|0) ? ' cur' : ''}">
+      <div class="t"><button class="num" data-pknum="${i}">${esc(pkLabel(p))}</button>
+        <span class="rd">${esc(p.road || '（未填路名）')}</span><span class="st ${st[0]}">${st[1]}</span></div>
+      <div class="m">${meta}</div>
+      <div class="b"><button data-pkopen="${i}">開啟</button>${blank ? '' : `<button data-pkround="${i}">新增時段</button>`}<button class="danger" data-pkdelrec="${i}">刪除</button></div>
+    </div>`;
+  }).join('');
+  const sh = openSheet(`<h3><span>供需清單（${pkExportable().length}）</span><button class="fm-tbtn" id="pkl-new">＋ 新紀錄</button><button class="fm-tbtn" id="pkl-x">關閉</button></h3>
+    <div class="body">${cards}<p class="fm-hint">點編號可手動調整 P 編號（手動改過的不會再被自動重排）。</p></div>
+    <div class="acts row"><button id="pkl-csv">匯出供需 CSV</button><button id="pkl-sum">彙整 CSV</button><button id="pkl-geo">GeoJSON</button></div>`, true);
+  sh.querySelector('#pkl-x').onclick = ()=> closeSheet();
+  sh.querySelector('#pkl-csv').onclick = ()=> exportPkCSV();
+  sh.querySelector('#pkl-sum').onclick = ()=> exportPkSummary();
+  sh.querySelector('#pkl-geo').onclick = ()=> exportPkGeo();
+  sh.querySelector('#pkl-new').onclick = ()=>{
+    let idx = D.parking.findIndex(p=>pkIsBlank(p));
+    if(idx < 0){ D.parking.push(pkBlank()); pkRenumber(); idx = D.parking.length - 1; }
+    D.pcur = idx; FM.pkSel = null; save(); closeSheet(); renderAll();
+  };
+  sh.querySelectorAll('[data-pkopen]').forEach(b=> b.onclick = ()=>{
+    D.pcur = +b.dataset.pkopen; FM.pkSel = null; FM.buf = null; save(); closeSheet(); renderAll();
+  });
+  sh.querySelectorAll('[data-pkround]').forEach(b=> b.onclick = ()=>{
+    D.pcur = +b.dataset.pkround; closeSheet(); renderAll(); pkAddRound();
+  });
+  sh.querySelectorAll('[data-pknum]').forEach(b=> b.onclick = ()=> pkNumSheet(+b.dataset.pknum));
+  sh.querySelectorAll('[data-pkdelrec]').forEach(b=> b.onclick = async ()=>{
+    const i = +b.dataset.pkdelrec, p = D.parking[i];
+    const ok = pkIsBlank(p) || await ask(`刪除 ${pkLabel(p)}？`,
+      `${esc(p.road || '')} ${esc(pkTypeName(p))}，計數與拍照紀錄會一併刪除，無法復原。`,
+      [{label:'刪除', value:true, cls:'danger'}, {label:'取消', value:false}]);
+    if(!ok){ pkListSheet(); return; }
+    D.parking.splice(i, 1);
+    if(!D.parking.length) D.parking.push(pkBlank());
+    if(i < (D.pcur|0)) D.pcur--;
+    D.pcur = clamp(D.pcur|0, 0, D.parking.length-1);
+    pkRenumber(); save(); renderAll(); pkListSheet();
+  });
+}
+function pkNumSheet(i){
+  const p = D.parking[i];
+  const sh = openSheet(`<h3><span>調整 P 編號</span></h3><div class="body">
+    <label class="fm-lbl">P 編號</label><input type="number" id="pn-no" inputmode="numeric" min="1" value="${p.no}">
+    <p class="fm-hint">依清單位置的自動值：P${i+1}。手動改過的編號之後不會再被自動重排。</p></div>
+    <div class="acts"><button class="pri" id="pn-ok">儲存</button><button id="pn-auto">恢復自動編號</button><button id="pn-x">取消</button></div>`);
+  sh.querySelector('#pn-x').onclick = ()=> pkListSheet();
+  sh.querySelector('#pn-auto').onclick = ()=>{ p.noManual = false; pkRenumber(); save(); renderAll(); pkListSheet(); };
+  sh.querySelector('#pn-ok').onclick = ()=>{
+    const v = parseInt(sh.querySelector('#pn-no').value);
+    if(!(v > 0)) return toast('P 編號需為正整數');
+    p.no = v; p.noManual = v !== i+1;
+    save(); renderAll(); pkListSheet();
+  };
+}
+
+/* ── 匯出 ── */
+const PK_VEH_COLS = ['car','moto','bike'];
+function pkRowsForExport(){
+  const out = [];
+  pkExportable().forEach(p=>{
+    const t = pkT(p) || {};
+    p.rounds.forEach((r, ri)=>{
+      if(p.rounds.length > 1 && !r.startedAt && !Object.keys(r.inn).length && !Object.keys(r.out).length) return;
+      out.push({p, r, ri, t});
+    });
+  });
+  return out;
+}
+function exportPkCSV(){
+  const rows = pkRowsForExport();
+  if(!rows.length) return toast('目前沒有可匯出的供需紀錄');
+  const extraVeh = [];
+  rows.forEach(({p})=> pkVehs(p).forEach(v=>{ if(!PK_VEH_COLS.includes(v) && !extraVeh.includes(v)) extraVeh.push(v); }));
+  const vehCols = PK_VEH_COLS.concat(extraVeh);
+  const head = ['P編號','紀錄型態','時段','路名','類型','側別','位置註記','長度','縱深']
+    .concat(CATS.map(([,l])=>l + '格數'), ['格數（單一）','供給換算值','供給採用值','供給合計'])
+    .concat(CATS.map(([,l])=>l + '停放'), ['範圍內停放（單一）'])
+    .concat(CATS.map(([,l])=>l + '使用率'), ['使用率（單一）'])
+    .concat(vehCols.map(v=>'範圍外違停_' + vehName(v)))
+    .concat(vehCols.map(v=>'路段計數_' + vehName(v)))
+    .concat(['調查開始','調查結束','GPS起點','GPS終點','備註']);
+  const body = rows.map(({p, r, ri, t})=>{
+    const sr = pkSupplyRows(p), single = sr.find(x=>x.key === 'slot');
+    const cell = [];
+    cell.push('P' + p.no, t.seg ? '路段' : '群組', p.rounds.length > 1 ? (r.name || '時段' + (ri+1)) : (r.name || ''),
+      p.road, pkTypeName(p), p.side === 'odd' ? '單號側' : (p.side === 'even' ? '雙號側' : ''),
+      p.locNote, p.len > 0 ? fmt(p.len) : '', p.depth > 0 ? fmt(p.depth) : '');
+    CATS.forEach(([k])=> cell.push(t.cats && p.slots[k] > 0 ? p.slots[k] : ''));
+    cell.push(!t.cats && p.slots.slot > 0 ? p.slots.slot : '',
+      single && single.calc != null && !p.slotted ? single.calc : '',
+      p.supUse.slot > 0 ? p.supUse.slot : '',
+      t.grp ? pkSupplyTotal(p) : '');
+    CATS.forEach(([k])=> cell.push(t.cats && r.inn[k] != null ? r.inn[k] : ''));
+    cell.push(!t.cats && r.inn.slot != null ? r.inn.slot : '');
+    CATS.forEach(([k])=>{
+      const row = sr.find(x=>x.key === k), sup = row ? pkSupply(p, row) : null;
+      cell.push(sup > 0 && r.inn[k] != null ? (r.inn[k] / sup).toFixed(3) : '');
+    });
+    const supS = single ? pkSupply(p, single) : null;
+    cell.push(!t.cats && supS > 0 && r.inn.slot != null ? (r.inn.slot / supS).toFixed(3) : '');
+    vehCols.forEach(v=> cell.push(t.grp && r.out[v] != null ? r.out[v] : ''));
+    vehCols.forEach(v=> cell.push(t.seg && r.out[v] != null ? r.out[v] : ''));
+    const g = p.gps || {};
+    cell.push(r.startedAt || '', r.endedAt || '',
+      g.a ? `${g.a.lat.toFixed(6)}, ${g.a.lng.toFixed(6)}` : '',
+      g.b ? `${g.b.lat.toFixed(6)}, ${g.b.lng.toFixed(6)}` : '', p.note);
+    return cell;
+  });
+  const date = surveyDatePk();
+  download(`${date}_供需.csv`, '﻿' + [head].concat(body).map(r=>r.map(csvCell).join(',')).join('\r\n'), 'text/csv');
+  toast(`已匯出 ${date}_供需.csv（${rows.length} 列）`);
+}
+function exportPkSummary(){
+  const rows = pkRowsForExport();
+  if(!rows.length) return toast('目前沒有可匯出的供需紀錄');
+  /* 依路名 × 類型 × 時段彙整；同一筆紀錄在每個時段各算一次供給，不重複累加 */
+  const map = new Map();
+  rows.forEach(({p, r, ri, t})=>{
+    const slot = r.name || (p.rounds.length > 1 ? '時段' + (ri+1) : '');
+    const k = [p.road || '（未填）', pkTypeName(p), slot].join('｜');
+    if(!map.has(k)) map.set(k, {road:p.road, type:pkTypeName(p), slot, n:0, sup:0, inn:0, out:0, seg:0});
+    const o = map.get(k);
+    o.n++;
+    if(t.grp) o.sup += pkSupplyTotal(p);
+    Object.values(r.inn).forEach(v=> o.inn += v || 0);
+    Object.values(r.out).forEach(v=>{ if(t.seg) o.seg += v || 0; else o.out += v || 0; });
+  });
+  const head = ['路名','類型','時段','紀錄筆數','供給合計','範圍內停放','使用率','範圍外違停','路段計數'];
+  const body = [...map.values()].map(o=>[o.road, o.type, o.slot, o.n, o.sup || '', o.inn || '',
+    o.sup > 0 ? (o.inn / o.sup).toFixed(3) : '', o.out || '', o.seg || '']);
+  const date = surveyDatePk();
+  download(`${date}_供需彙整.csv`, '﻿' + [head].concat(body).map(r=>r.map(csvCell).join(',')).join('\r\n'), 'text/csv');
+  toast(`已匯出 ${date}_供需彙整.csv`);
+}
+function exportPkGeo(){
+  const feats = [];
+  pkExportable().forEach(p=>{
+    const g = p.gps || {};
+    if(!g.a) return;
+    const t = pkT(p) || {};
+    const rows = pkCounterRows(p);
+    const props = {P:'P' + p.no, 路名:p.road, 類型:pkTypeName(p),
+      側別: p.side === 'odd' ? '單號側' : (p.side === 'even' ? '雙號側' : ''),
+      位置註記:p.locNote, 紀錄型態: t.seg ? '路段' : '群組',
+      供給: t.grp ? pkSupplyTotal(p) : null, 備註:p.note};
+    rows.forEach(r=>{ props[r.label.replace('　', '_')] = pkGet(p, r.path) || 0; });
+    feats.push({type:'Feature',
+      geometry: g.b ? {type:'LineString', coordinates:[[g.a.lng, g.a.lat], [g.b.lng, g.b.lat]]}
+                    : {type:'Point', coordinates:[g.a.lng, g.a.lat]},
+      properties: props});
+  });
+  if(!feats.length) return toast('沒有記錄 GPS 的供需紀錄');
+  const date = surveyDatePk();
+  download(`${date}_供需.geojson`, JSON.stringify({type:'FeatureCollection', features:feats}, null, 1), 'application/geo+json');
+  toast(`已匯出 ${date}_供需.geojson（${feats.length} 筆）`);
+}
+function surveyDatePk(){
+  const t = D.sections.map(s=>s.startedAt).concat(D.parking.map(p=>p.startedAt)).filter(Boolean).sort()[0];
+  return ymd(t || isoTW());
+}
+async function perUnitSheet(){
+  const s = (D.settings && D.settings.perUnit) || {};
+  const cur = v => (s[v] > 0 ? s[v] : (PER_DEF[v] || null));
+  const r = await ask('每輛佔用長度', '無格位停放區以「長度 ÷ 每輛佔用長度」換算供給（無條件捨去）。',
+    ['moto','bike','car'].map(v=>({label:`${VEH[v]}：${cur(v) ? cur(v) + ' m/輛' : '未設定'}`, value:v}))
+      .concat([{label:'關閉', value:null}]));
+  if(!r) return;
+  const nm = await askText(`${VEH[r]} 每輛佔用長度`, '公尺／輛，例：機車 0.7', cur(r) ? String(cur(r)) : '');
+  if(nm === null) return perUnitSheet();
+  const v = parseFloat(nm);
+  D.settings = Object.assign({}, D.settings);
+  D.settings.perUnit = Object.assign({}, D.settings.perUnit);
+  if(v > 0) D.settings.perUnit[r] = Math.round(v * 100) / 100; else delete D.settings.perUnit[r];
+  save(); renderAll();
+  toast(v > 0 ? `${VEH[r]}：${Math.round(v*100)/100} m/輛` : `${VEH[r]} 已清除`);
+  perUnitSheet();
+}
 
 /* ═════════ 啟動 ═════════ */
 load();
