@@ -87,10 +87,24 @@
     border-radius:3px;background:transparent;color:var(--ink)}
   .label-in:hover{border-color:var(--rule);background:#fff}
   .label-in:focus{border-color:var(--blue);background:#fff}
-  .color-dot{width:16px;height:16px;padding:0;border:1px solid var(--rule);border-radius:3px;
-    background:none;cursor:pointer;margin-right:6px;vertical-align:-3px}
-  .color-dot::-webkit-color-swatch-wrapper{padding:0}
-  .color-dot::-webkit-color-swatch{border:none;border-radius:2px}
+  .color-dot{width:18px;height:18px;padding:0;border:1px solid var(--rule);border-radius:3px;
+    cursor:pointer;margin-right:6px;vertical-align:-4px}
+  .color-dot:hover{border-color:var(--ink)}
+  .color-dot.big{width:38px;height:30px;margin-right:0;vertical-align:middle}
+  /* 顏色面板：預設色、近期 10 色、hex */
+  .cpop{position:fixed;z-index:60;width:244px;background:var(--card);border:1px solid var(--ink);
+    border-radius:6px;box-shadow:0 8px 24px rgba(23,33,31,.22);padding:10px}
+  .cpop .cp-h{font-size:11px;letter-spacing:.06em;color:var(--ink-soft);margin:0 0 5px}
+  .cpop .cp-h + .cp-grid{margin-bottom:9px}
+  .cp-grid{display:flex;flex-wrap:wrap;gap:5px}
+  .cp-sw{width:24px;height:24px;padding:0;border:1px solid var(--rule);border-radius:3px;cursor:pointer}
+  .cp-sw:hover{border-color:var(--ink)}
+  .cp-sw.on{outline:2px solid var(--blue);outline-offset:1px;border-color:var(--blue)}
+  .cp-non{font-size:12px;color:var(--ink-soft)}
+  .cp-row{display:flex;gap:5px;align-items:center;margin-top:10px;padding-top:9px;border-top:1px dashed var(--rule)}
+  .cpop #cp-hex{flex:1;min-width:0;font-family:"JetBrains Mono",monospace;font-size:13px;text-transform:uppercase;
+    padding:5px 6px;border:1px solid var(--rule);border-radius:3px;background:#fff}
+  .cpop .cp-row button{font-size:12px;padding:5px 8px;white-space:nowrap}
   .mini-sel{font-size:12px;padding:2px 3px;border:1px solid var(--rule);border-radius:3px;background:#fff;max-width:64px}
   .icon-btn{border:1px solid var(--rule);background:#fff;color:var(--ink-soft);width:28px;height:28px;
     padding:0;border-radius:3px;font-size:13px;line-height:1}
@@ -560,7 +574,8 @@ body.mode-field .wrap{display:none}
         </div>
         <div class="btns" id="customfields" hidden>
           <input id="cname" type="text" placeholder="項目名稱（例：側溝）" style="flex:1;min-width:120px">
-          <input id="ccolor" type="color" value="#6B7A85" title="顏色">
+          <input id="ccolor" type="color" value="#6B7A85" hidden>
+          <button type="button" class="color-dot big" id="ccolorbtn" style="background:#6B7A85" title="顏色（#6B7A85）"></button>
           <select id="cshape" title="斷面型式">
             <option value="flat">路面齊平</option>
             <option value="raised">高於路面（人行、植栽類）</option>
@@ -1744,7 +1759,7 @@ function renderTable(){
     : segs.map((s,i)=>{
       const L = legalMin(s.kind, s), bad = L && chkW(s) < L.min - 0.005;
       return `<tr draggable="true" data-row="${i}" data-sid="${s.id}">
-        <td><span class="drag-handle" title="拖曳調整順序">⠿</span><input type="color" class="color-dot" data-color="${s.id}" value="${toHex(colorOf(s))}" title="變更顏色"><input type="text" class="label-in" data-label="${s.id}" value="${labelOf(s).replace(/"/g,'&quot;')}" title="可修改名稱，會連動斷面圖">${bad?'<span class="badge">未達標</span>':''}</td>
+        <td><span class="drag-handle" title="拖曳調整順序">⠿</span><button type="button" class="color-dot" data-color="${s.id}" style="background:${toHex(colorOf(s))}" title="變更顏色（${toHex(colorOf(s))}）"></button><input type="text" class="label-in" data-label="${s.id}" value="${labelOf(s).replace(/"/g,'&quot;')}" title="可修改名稱，會連動斷面圖">${bad?'<span class="badge">未達標</span>':''}</td>
         <td class="num"><input type="number" step="0.05" min="${HARD_MIN}" max="${HARD_MAX}" value="${s.w.toFixed(2)}" data-w="${s.id}" style="width:70px"></td>
         <td class="num">${CLEAR_KINDS.includes(s.kind) ? `<input type="number" step="0.05" min="0" placeholder="—" value="${hasClear(s)?s.clearW.toFixed(2):''}" data-cw="${s.id}" style="width:64px" title="淨寬：扣除障礙物後最窄可通行寬度（法規檢核以此為準）">` : '<span style="color:var(--ink-soft)">—</span>'}</td>
         <td class="num" style="color:${bad?'var(--pencil)':'var(--ink-soft)'}">${L?L.min.toFixed(2):'—'}</td>
@@ -1787,21 +1802,19 @@ function renderTable(){
   else if(leftover>0){ st.textContent=`剩餘 ${leftover.toFixed(2)} m 未配置`; st.className='status warn'; }
   else { st.textContent=`超出 ${Math.abs(leftover).toFixed(2)} m`; st.className='status warn'; }
 
-  tb.querySelectorAll('[data-color]').forEach(inp=>{
-    // 拖曳調色時只重繪斷面圖，不重建表格（否則取色器會被換掉而中斷）
-    inp.oninput = e=>{
-      const s = segs.find(s=>s.id==e.target.dataset.color);
-      if(!s) return;
-      s.color = e.target.value;
-      suppressTable = true;
-      render();
-      suppressTable = false;
-    };
-    // 取色結束後再完整重繪一次
-    inp.onchange = e=>{
-      const s = segs.find(s=>s.id==e.target.dataset.color);
-      if(s) s.color = e.target.value;
-      render();
+  tb.querySelectorAll('[data-color]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.color, s0 = segs.find(x=>x.id == id);
+      if(!s0) return;
+      openColorPop(btn, colorOf(s0), (hex, live)=>{
+        const s = segs.find(x=>x.id == id);
+        if(!s) return;
+        s.color = hex;
+        btn.style.background = hex; btn.title = `變更顏色（${hex}）`;
+        suppressTable = true;              // 只重畫斷面圖：表格重建會換掉色塊，面板與點擊都會中斷
+        render();
+        suppressTable = false;
+      });
     };
   });
   tb.querySelectorAll('[data-label]').forEach(inp=>{
@@ -2702,6 +2715,111 @@ document.getElementById('del').onclick = async ()=>{
     document.getElementById('schemes').value = '';
   }catch(e){ alert('刪除失敗：' + (e && e.message ? e.message : e)); }
 };
+
+/* ═══════ 顏色面板：類型預設色、灰階、近期 10 色、可複製的 hex ═══════ */
+const COLOR_KEY = 'road-colors';                     // 近期用色為全域設定，存在瀏覽器
+const CP_GREYS = ['#FFFFFF','#E6E4DE','#C6C3BB','#9A958C','#7C8781','#6B7A85','#47535C','#2B3338'];
+const isHex6 = c => /^#[0-9A-F]{6}$/.test(c || '');
+function normHex(v){
+  let t = String(v || '').trim().replace(/[^#0-9a-fA-F]/g, '');
+  if(t[0] !== '#') t = '#' + t.replace(/#/g, '');
+  if(t.length === 4) t = '#' + [...t.slice(1)].map(x=>x+x).join('');
+  t = t.toUpperCase();
+  return isHex6(t) ? t : null;
+}
+function recentColors(){
+  try{
+    const v = JSON.parse(localStorage.getItem(COLOR_KEY) || '[]');
+    return Array.isArray(v) ? v.map(normHex).filter(Boolean).slice(0, 10) : [];
+  }catch(e){ return []; }
+}
+function pushRecent(hex){
+  const h = normHex(hex); if(!h) return;
+  const list = [h].concat(recentColors().filter(c=> c !== h)).slice(0, 10);
+  try{ localStorage.setItem(COLOR_KEY, JSON.stringify(list)); }catch(e){}
+}
+function kindSwatches(){
+  const seen = new Set(), out = [];
+  Object.values(KIND).forEach(k=>{
+    const h = normHex(k.color); if(!h || seen.has(h)) return;
+    seen.add(h); out.push([h, k.label]);
+  });
+  return out;
+}
+let cpopEl = null, cpopOff = null;
+function closeColorPop(){
+  if(cpopOff){ cpopOff(); cpopOff = null; }
+  if(cpopEl){ cpopEl.remove(); cpopEl = null; }
+}
+/* anchor：被點的色塊；cur：目前顏色；apply(hex, live)：套用（live=調整中，不重建表格） */
+function openColorPop(anchor, cur, apply){
+  const was = cpopEl && cpopEl.dataset.anchor === (anchor.dataset.color || anchor.id || '');
+  closeColorPop();
+  if(was) return;                                     // 再點一次同一個色塊＝關閉
+  const hex0 = normHex(cur) || '#888888';
+  let last = hex0;
+  const sw = (h, t) => `<button type="button" class="cp-sw${h === hex0 ? ' on' : ''}" data-cp="${h}" style="background:${h}" title="${t}"></button>`;
+  const rec = recentColors();
+  const el = document.createElement('div');
+  el.className = 'cpop';
+  el.dataset.anchor = anchor.dataset.color || anchor.id || '';
+  el.innerHTML = `<div class="cp-h">項目類型預設色</div>
+    <div class="cp-grid">${kindSwatches().map(([h,l])=>sw(h, l + ' ' + h)).join('')}</div>
+    <div class="cp-h">灰階</div>
+    <div class="cp-grid">${CP_GREYS.map(h=>sw(h, h)).join('')}</div>
+    <div class="cp-h">近期使用（最多 10 色）</div>
+    <div class="cp-grid">${rec.length ? rec.map(h=>sw(h, h)).join('') : '<span class="cp-non">尚無紀錄，選過的顏色會留在這裡</span>'}</div>
+    <div class="cp-row">
+      <input type="text" id="cp-hex" value="${hex0}" spellcheck="false" maxlength="7" title="可直接輸入或貼上 hex（例：#A8763F）">
+      <button type="button" class="ghost" id="cp-copy" title="複製 hex">複製</button>
+      <button type="button" class="ghost" id="cp-more" title="開啟系統選色器">更多…</button>
+    </div>
+    <input type="color" id="cp-native" value="${hex0}" style="position:absolute;left:10px;bottom:8px;width:1px;height:1px;opacity:0">`;
+  document.body.appendChild(el);
+  cpopEl = el;
+  const r = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = Math.round(Math.min(Math.max(8, r.left), Math.max(8, innerWidth - w - 8))) + 'px';
+  el.style.top = Math.round(r.bottom + 6 + h > innerHeight - 8 ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+  const hexIn = el.querySelector('#cp-hex'), nat = el.querySelector('#cp-native');
+  const mark = hex => el.querySelectorAll('[data-cp]').forEach(b=> b.classList.toggle('on', b.dataset.cp === hex));
+  const set = (hex, live)=>{
+    const t = normHex(hex); if(!t) return;
+    last = t; apply(t, !!live); mark(t); nat.value = t;
+    if(document.activeElement !== hexIn) hexIn.value = t;
+  };
+  el.querySelectorAll('[data-cp]').forEach(b=> b.onclick = ()=>{ set(b.dataset.cp, false); pushRecent(b.dataset.cp); closeColorPop(); });
+  hexIn.oninput = ()=>{ const t = normHex(hexIn.value); if(t) set(t, true); };
+  hexIn.onkeydown = e=>{ if(e.key === 'Enter'){ e.preventDefault(); const t = normHex(hexIn.value); if(t){ set(t, false); pushRecent(t); } closeColorPop(); } };
+  el.querySelectorAll('#cp-copy, #cp-more').forEach(b=> b.onmousedown = e=> e.preventDefault());   // 不搶走 hex 欄的焦點
+  el.querySelector('#cp-copy').onclick = async ()=>{
+    const b = el.querySelector('#cp-copy'), t = normHex(hexIn.value) || last;
+    try{ await navigator.clipboard.writeText(t); }
+    catch(e){ hexIn.select(); try{ document.execCommand('copy'); }catch(e2){} }
+    b.textContent = '已複製'; setTimeout(()=>{ if(b.isConnected) b.textContent = '複製'; }, 1200);
+  };
+  el.querySelector('#cp-more').onclick = ()=> nat.click();
+  nat.oninput = ()=> set(nat.value, true);
+  nat.onchange = ()=>{ set(nat.value, false); pushRecent(nat.value); };
+  const onDown = e=>{ if(!el.contains(e.target) && e.target !== anchor) finish(); };
+  const onKey = e=>{ if(e.key === 'Escape') finish(); };
+  const finish = ()=>{ if(last !== hex0){ apply(last, false); pushRecent(last); } closeColorPop(); };
+  setTimeout(()=>{
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+  }, 0);
+  cpopOff = ()=>{
+    document.removeEventListener('mousedown', onDown, true);
+    document.removeEventListener('keydown', onKey, true);
+  };
+  hexIn.focus(); hexIn.select();
+}
+(function bindCustomColor(){
+  const btn = document.getElementById('ccolorbtn'), inp = document.getElementById('ccolor');
+  if(!btn || !inp) return;
+  btn.onclick = ()=> openColorPop(btn, inp.value, hex=>{
+    inp.value = hex; btn.style.background = hex; btn.title = `顏色（${hex}）`;
+  });
+})();
 
 /* 文字大小（名稱／數字／斷面名稱／全寬標題的大小與粗體）為全域設定，存在瀏覽器 */
 const FONT_KEY = 'road-font';
