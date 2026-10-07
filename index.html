@@ -502,7 +502,7 @@ body.mode-field .wrap{display:none}
           <select id="g-lanemode"><option value="total" selected>總車道數</option><option value="bidir">雙向（每向車道數）</option></select>
           <span></span></div>
 
-        <div class="row"><label for="g-lanes"><span id="g-lanes-label">汽車道數</span></label>
+        <div class="row"><label for="g-lanes"><span id="g-lanes-label">車道數</span></label>
           <select id="g-lanes"><option>1</option><option value="2" selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>8</option></select>
           <span><input id="g-lanew" type="number" step="0.05" value="3.25"><span class="unit"> m</span></span></div>
 
@@ -530,7 +530,7 @@ body.mode-field .wrap{display:none}
           <select id="g-slack">
             <option value="sidewalk" selected>人行道</option>
             <option value="arcade">騎樓</option>
-            <option value="lane">汽車道</option>
+            <option value="lane">車道</option>
             <option value="facility">公共設施帶</option>
             <option value="planting">植栽帶</option>
             <option value="park">路邊停車帶</option>
@@ -560,7 +560,7 @@ body.mode-field .wrap{display:none}
         <tfoot id="tfoot"></tfoot>
       </table>
       <div class="btns" style="margin-top:4px">
-        <button class="ghost" id="eqlanes">汽車道寬度平均分配</button>
+        <button class="ghost" id="eqlanes">車道寬度平均分配</button>
         <button class="ghost" id="locktoggle">全部鎖定寬度</button>
         <button class="ghost" id="iconall">全部套用預設圖示</button>
         <button class="ghost" id="iconnone">全部關閉圖示</button>
@@ -583,7 +583,7 @@ body.mode-field .wrap{display:none}
           </select>
         </div>
       </div>
-      <p class="note">拖曳每列最前方的 ⠿ 可調整前後順序；點左側色塊可變更顏色；名稱可直接點擊修改，會即時連動斷面圖；每列可選擇要顯示的斷面圖示（預設不顯示）。汽車道列可選轉向（直／左／右／直左／直右／左右／左直右）與行進方向（↑前／↓後）；圖上直接點箭頭也能翻轉方向。▲／—／▼＝該項高於路面、與路面齊平、低於路面，點擊可循環切換；🔒 鎖定＝寬度固定，未鎖定的項目會依比例吸收剩餘寬度。自訂項目沒有法定最小寬度，檢核時只列為參考。</p>
+      <p class="note">拖曳每列最前方的 ⠿ 可調整前後順序；點左側色塊可變更顏色；名稱可直接點擊修改，會即時連動斷面圖；每列可選擇要顯示的斷面圖示（預設不顯示）。車道列可選轉向（直／左／右／直左／直右／左右／左直右）與行進方向（↑前／↓後）；圖上直接點箭頭也能翻轉方向。▲／—／▼＝該項高於路面、與路面齊平、低於路面，點擊可循環切換；🔒 鎖定＝寬度固定，未鎖定的項目會依比例吸收剩餘寬度。自訂項目沒有法定最小寬度，檢核時只列為參考。</p>
 
       <h3 class="sub">路緣標線</h3>
       <p class="note" style="margin:0 0 8px">標線寬 0.12 m。圖上的標線本體、整條引線、上方「黃線／紅線」文字都可以直接拖曳（一拖曳即自動切換為「手動調整」），自由移動、不會吸附交界。</p>
@@ -645,7 +645,7 @@ const KIND = {
   park:    {label:'路邊停車帶',  color:'#8A7F6B', floor:1.8, max:3.5,icon:'car'},
   slow:    {label:'慢車道／機車道',color:'#6E7A80',floor:1.5, max:5, icon:'moto'},
   bus:     {label:'公車專用道',  color:'#5A5F7A', floor:3.0, max:5,  icon:'car'},
-  lane:    {label:'汽車道',      color:'#47535C', floor:2.8, max:5,  icon:'car'},
+  lane:    {label:'車道',      color:'#47535C', floor:2.8, max:5,  icon:'car'},
   median:  {label:'中央分隔島',  color:'#3F6D4E', floor:0.5, max:12, icon:'tree', shape:'raised'},
   shoulder:{label:'路肩',        color:'#7C8781', floor:0.3, max:3,  icon:null},
   ditch:   {label:'側溝',        color:'#6B7A85', floor:0.2, max:3,  icon:null},
@@ -936,7 +936,7 @@ function generate(){
   const push = (arr,kind,w)=> arr.push({id:uid++, kind, w:round2(Math.max(w, HARD_MIN)), locked: kind!==slack});
   const pair = (cnt,kind,w)=>{ if(cnt>=1) push(L,kind,w); if(cnt>=2) push(R,kind,w); };
 
-  // 由路緣往內：人行道 → 公共設施帶 → 側溝 → 自行車道 → 停車帶 → 慢車道 → 汽車道
+  // 由路緣往內：人行道 → 公共設施帶 → 側溝 → 自行車道 → 停車帶 → 慢車道 → 車道
   pair(n('g-arcade'),'arcade',  v('g-arcadew'));
   pair(n('g-side'), 'sidewalk', v('g-sidew'));
   pair(n('g-fac'),  'facility', v('g-facw'));
@@ -1001,7 +1001,7 @@ const shapeOf = s => s.shape || KIND[s.kind].shape || 'flat';
 
 /* ═══════ 剩餘車道寬（扣除停車格） ═══════ */
 const CARRIAGE = ['ditch','lane','bus','slow'];      // 貼齊路邊時併入計算的範圍
-const LANEKIND = ['lane','bus'];                     // 未貼齊時逐一標註的汽車道
+const LANEKIND = ['lane','bus'];                     // 未貼齊時逐一標註的車道
 
 function subtract(iv, cut){                          // 區間相減，回傳 0~2 段
   const [a,b] = iv, [c,d] = cut;
@@ -1033,7 +1033,7 @@ function residuals(){
         if(q - p > 0.02) out.push({a:p, b:q, w:round2(q-p), mode:'flush'});
       });
     } else {
-      // 未貼齊路邊：逐一標註停車格以外的汽車道個別寬度
+      // 未貼齊路邊：逐一標註停車格以外的車道個別寬度
       bd.filter(x=> LANEKIND.includes(x.s.kind)).forEach(x=>{
         let free = [[x.a, x.b]];
         stalls.forEach(t=>{ free = free.flatMap(iv => subtract(iv, [t.off, round2(t.off+t.w)])); });
@@ -1088,7 +1088,7 @@ function computeKerbMarks(){
       else if(pv && !isPed(pv.s)) out.push(round2(x.a));
     });
   } else if(kerbPos === 'edge'){
-    // 側溝與汽車道交界處、汽車道那一側的邊
+    // 側溝與車道交界處、車道那一側的邊
     bk.forEach((x,i)=>{
       if(x.s.kind !== 'ditch') return;
       const nx = bk[i+1], pv = bk[i-1];
@@ -1907,10 +1907,10 @@ function renderTable(){
     [segs[i],segs[j]]=[segs[j],segs[i]]; render(); });
 }
 
-/* 汽車道寬度平均分配：只重分配汽車道之間的總寬，其他項目完全不動 */
+/* 車道寬度平均分配：只重分配車道之間的總寬，其他項目完全不動 */
 document.getElementById('eqlanes').onclick = ()=>{
   const lanes = segs.filter(s=>s.kind==='lane');
-  if(lanes.length < 2) return alert('目前汽車道少於 2 條，無需平均分配。');
+  if(lanes.length < 2) return alert('目前車道少於 2 條，無需平均分配。');
   const sum = lanes.reduce((a,s)=>a+s.w, 0);
   const each = round2(sum / lanes.length);
   lanes.forEach((s,i)=>{
@@ -2077,13 +2077,13 @@ function renderChecks(){
   /* 4. 車道配置 */
   const lanes = count('lane');
   if(roadClass==='major'){
-    if(lanes>=4) add('pass', `汽車道共 ${lanes} 車道，各方向 ≥2 車道。`, '設計標準 §5-2', 'maj:lanes');
+    if(lanes>=4) add('pass', `共 ${lanes} 車道，各方向 ≥2 車道。`, '設計標準 §5-2', 'maj:lanes');
     else add('fail', `主要道路各方向應為 2 車道以上（現為 ${lanes} 車道）。`, '設計標準 §5-2', 'maj:lanes');
     if(has('median') || has('slow')) add('pass', '已採中央分隔或快慢分隔。', '設計標準 §5-2', 'maj:sep');
     else add('fail', '主要道路應採中央分隔或快慢分隔。', '設計標準 §5-2', 'maj:sep');
   }
   if(roadClass==='minor'){
-    if(lanes>=2) add('pass', `汽車道共 ${lanes} 車道。`, '設計標準 §6-1', 'min:lanes');
+    if(lanes>=2) add('pass', `共 ${lanes} 車道。`, '設計標準 §6-1', 'min:lanes');
     else add('warn', `次要道路各方向至少一快車道（現為 ${lanes} 車道）。`, '設計標準 §6-1', 'min:lanes');
     if(has('slow')) add('pass', '已設慢車道／機車道。', '設計標準 §6-1', 'min:slow');
     else add('warn', '次要道路各方向宜至少一慢車道。', '設計標準 §6-1', 'min:slow');
@@ -2105,7 +2105,7 @@ function renderChecks(){
       o += s.w;
     });
     if(onLane > 0.02)
-      add('warn', `停車格 ${i+1} 有 ${onLane.toFixed(2)} m 落在汽車道／公車專用道上：不得於行車必要空間劃設停車格位。`, '設計標準 §12-1', 'stall:'+i+':lane');
+      add('warn', `停車格 ${i+1} 有 ${onLane.toFixed(2)} m 落在車道／公車專用道上：不得於行車必要空間劃設停車格位。`, '設計標準 §12-1', 'stall:'+i+':lane');
     else
       add('info', `停車格 ${i+1}：${coverText(st)}（獨立圖層，不計入總寬）。`, '設計標準 §12', 'stall:'+i+':info');
   });
@@ -2263,7 +2263,7 @@ document.getElementById('drawstyle').addEventListener('change', e=>{ drawStyle =
 });
 document.getElementById('g-lanemode').addEventListener('change', e=>{
   document.getElementById('g-lanes-label').textContent =
-    e.target.value === 'bidir' ? '每向車道數' : '汽車道數';
+    e.target.value === 'bidir' ? '每向車道數' : '車道數';
 });
 document.getElementById('gen').onclick = generate;
 document.getElementById('clear').onclick = ()=>{ segs=[]; stalls=[]; leftover=total; render(); };
@@ -2695,7 +2695,7 @@ document.getElementById('newscheme').onclick = ()=>{
     'g-lanes':'2','g-lanew':3,'g-slow':'0','g-sloww':2.0,'g-median':'0','g-medianw':1.5,
     'g-park':'0','g-parkw':2.2,'g-bike':'0','g-bikew':1.5,'g-slack':'sidewalk'};
   Object.entries(defaults).forEach(([id,v])=>{ const el = document.getElementById(id); if(el) el.value = v; });
-  document.getElementById('g-lanes-label').textContent = '汽車道數';
+  document.getElementById('g-lanes-label').textContent = '車道數';
 
   segs = []; uid = 1;
   generate();                       // 依預設條件產生一份新斷面
