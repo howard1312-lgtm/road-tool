@@ -76,6 +76,10 @@
   .fb-group{display:flex;align-items:center;gap:4px}
   .fb-group label{font-size:12px;color:var(--ink-soft)}
   .fontbar input[type=number]{width:52px}
+  .lenref{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--ink-soft)}
+  .lenref[hidden]{display:none}
+  .lenref input[type=number]{width:58px}
+  .lenwarn{color:var(--pencil);font-size:12px}
   .fontbar .icon-btn{font-family:"Archivo",serif;font-weight:700;font-size:13px}
   .drag-handle{cursor:grab;color:var(--ink-soft);font-size:14px;margin-right:5px;
     letter-spacing:-1px;user-select:none;vertical-align:-1px}
@@ -445,6 +449,13 @@ body.mode-field .wrap{display:none}
           <option value="color" selected>彩色圖塊</option>
           <option value="line">線條式（送審圖）</option>
         </select>
+        <select id="lenmode" class="mini-sel" style="max-width:120px" title="斷面長度：同樣長度＝每個斷面都畫滿圖寬；依全寬比例＝依基準全寬換算長度，不同斷面可比較寬窄">
+          <option value="fit" selected>同樣長度</option>
+          <option value="scale">依全寬比例</option>
+        </select>
+        <span id="lenrefbox" class="lenref" hidden><label for="lenref">基準全寬</label>
+          <input id="lenref" type="number" min="5" max="200" step="1" value="40" title="此全寬的斷面畫滿原本的圖寬，其他斷面依比例縮放"><span class="unit">m</span>
+          <span id="lenwarn" class="lenwarn" hidden></span></span>
         <span class="status ok" id="status">—</span>
       </div>
     </div>
@@ -1122,7 +1133,7 @@ function computeKerbMarks(){
 
 /* ═══════ 線條式（送審圖）繪圖 ═══════ */
 function renderLineStyle(){
-  const scale = (W-PAD*2)/Math.max(total,0.1);
+  const SP = span(), scale = SP.scale;
   const INK = '#17211F';
   const RULE_Y = 92;            // 尺寸線基準
   const TICK_UP = 22;           // 端點刻度往上長度
@@ -1131,7 +1142,7 @@ function renderLineStyle(){
   const NUM_Y = RULE_Y + 28;    // 數字基準列（未碰撞時，在尺寸線下方）
   const NUM_Y_UP = RULE_Y - 30; // 碰撞時移到尺寸線上方（高於分界刻度頂端）
   const LABEL_TOP = RULE_Y + 52;// 直書名稱起點（全部齊頂）
-  let parts = [], grabs = [], x = PAD;
+  let parts = [], grabs = [], x = SP.x0;
 
   // 先算每段中心與數字寬，決定哪些數字需要上移（與相鄰不上移者重疊時）
   const meta = segs.map((s)=>{
@@ -1142,7 +1153,7 @@ function renderLineStyle(){
     if(STALL_KINDS.includes(s.kind) && s.inclDitch) num += (s.ditchW > 0 ? `（含側溝${s.ditchW.toFixed(LINE_DEC)}）` : '（含側溝）');
     return {s, w, cx, num};
   });
-  x = PAD;
+  x = SP.x0;
   const half = m => textW(m.num, NUM_SIZE)/2;
   const up = new Array(meta.length).fill(false);
   // 逐一檢查相鄰兩段的數字是否重疊；若重疊，將「較窄」的一段上移。
@@ -1160,13 +1171,13 @@ function renderLineStyle(){
   }
 
   // 斷面名稱（最上方）
-  parts.push(titleText(W/2, RULE_Y-58-FONT.total.size-14));
+  parts.push(titleText(SP.xc, RULE_Y-58-FONT.total.size-14));
   // 全寬標註
-  parts.push(`<text x="${W/2}" y="${RULE_Y-58}" text-anchor="middle" font-family="Noto Sans TC" font-size="${FONT.total.size}" font-weight="${fw('total')}" fill="${INK}">${total.toFixed(LINE_DEC)}M</text>`);
+  parts.push(`<text x="${SP.xc}" y="${RULE_Y-58}" text-anchor="middle" font-family="Noto Sans TC" font-size="${FONT.total.size}" font-weight="${fw('total')}" fill="${INK}">${total.toFixed(LINE_DEC)}M</text>`);
   // 主尺寸線＋兩端界線
-  parts.push(`<line x1="${PAD}" y1="${RULE_Y}" x2="${W-PAD}" y2="${RULE_Y}" stroke="${INK}" stroke-width="1.6"/>
-    <line x1="${PAD}" y1="${RULE_Y-TICK_UP}" x2="${PAD}" y2="${RULE_Y+8}" stroke="${INK}" stroke-width="1.6"/>
-    <line x1="${W-PAD}" y1="${RULE_Y-TICK_UP}" x2="${W-PAD}" y2="${RULE_Y+8}" stroke="${INK}" stroke-width="1.6"/>`);
+  parts.push(`<line x1="${SP.x0}" y1="${RULE_Y}" x2="${SP.x1}" y2="${RULE_Y}" stroke="${INK}" stroke-width="1.6"/>
+    <line x1="${SP.x0}" y1="${RULE_Y-TICK_UP}" x2="${SP.x0}" y2="${RULE_Y+8}" stroke="${INK}" stroke-width="1.6"/>
+    <line x1="${SP.x1}" y1="${RULE_Y-TICK_UP}" x2="${SP.x1}" y2="${RULE_Y+8}" stroke="${INK}" stroke-width="1.6"/>`);
 
   meta.forEach((m,i)=>{
     const {s, w, cx} = m, k = KIND[s.kind];
@@ -1227,7 +1238,7 @@ function renderLineStyle(){
     const gy = snapGuide.kind === 'label'
       ? LABEL_TOP + TXTDY.label + snapGuide.dy - LABEL_SIZE
       : NUM_Y + TXTDY.num + snapGuide.dy - NUM_SIZE + 4;
-    parts.push(`<line x1="${PAD-10}" y1="${gy}" x2="${W-PAD+10}" y2="${gy}" stroke="#2C5D74" stroke-width="1" stroke-dasharray="6 4" opacity=".75"/>`);
+    parts.push(`<line x1="${SP.x0-10}" y1="${gy}" x2="${SP.x1+10}" y2="${gy}" stroke="#2C5D74" stroke-width="1" stroke-dasharray="6 4" opacity=".75"/>`);
   }
   svg.innerHTML = parts.join('') + grabs.join('');
   fitViewBox();
@@ -1235,6 +1246,7 @@ function renderLineStyle(){
     titleInput.style.display = 'none';
   syncIconBtn();
   syncLockBtn();
+  syncLenUI();
   renderTable();
   renderStalls();
   renderChecks();
@@ -1250,6 +1262,16 @@ function vtextDown(str, cx, topY, size, fill, weight){
 
 /* ═══════ 繪圖 ═══════ */
 const W=1000, H=400, PAD=40, GROUND_Y=200, SKY=60;
+/* 斷面長度：fit＝同樣長度（全寬填滿圖寬）；scale＝依全寬比例（基準全寬填滿圖寬，較窄者置中、較寬者畫布往右加長）
+   全域設定，存在瀏覽器（road-len） */
+let LEN_MODE = 'fit', LEN_REF = 40;
+function span(){
+  const t = Math.max(total, 0.1), full = W - PAD*2;
+  if(LEN_MODE !== 'scale') return {x0:PAD, x1:W-PAD, xc:W/2, scale:full/t};
+  const sc = full / Math.max(LEN_REF, 1), len = t*sc;
+  const x0 = len <= full ? (W - len)/2 : PAD;
+  return {x0, x1:x0+len, xc:x0+len/2, scale:sc};
+}
 /* 目前實際使用的 viewBox（會依內容自動擴張，避免放大字體時被切掉） */
 let VB = {x:0, y:0, w:W, h:H};
 
@@ -1271,9 +1293,9 @@ const svg = document.getElementById('draw');
 
 function render(){
   if(drawStyle === 'line') return renderLineStyle();
-  const scale = (W-PAD*2)/Math.max(total,0.1);
-  let x = PAD, parts=[], dims=[], grabs=[], overlayLine=[], narrowRow = 0;
-  parts.push(`<line x1="${PAD}" y1="${GROUND_Y}" x2="${W-PAD}" y2="${GROUND_Y}" stroke="#17211F" stroke-width="1.5"/>`);
+  const SP = span(), scale = SP.scale;
+  let x = SP.x0, parts=[], dims=[], grabs=[], overlayLine=[], narrowRow = 0;
+  parts.push(`<line x1="${SP.x0}" y1="${GROUND_Y}" x2="${SP.x1}" y2="${GROUND_Y}" stroke="#17211F" stroke-width="1.5"/>`);
 
   // 有顯示圖示的斷面，其名稱改置於斷面下方；尺寸標註列整體下移讓位
   const anyIconLabel = segs.some(s=>iconImg(s));
@@ -1348,7 +1370,7 @@ function render(){
         const mi = sizeOf(s.mixIcon);
         if(mi){
           mi.isMix = true;
-          const onLeftHalf = cx < PAD + (total*scale)/2;
+          const onLeftHalf = cx < SP.xc;
           const pos = s.mixPos || 'auto';
           const atEnd = pos === 'right' ? true : pos === 'left' ? false : onLeftHalf;
           if(repeatable && items.length >= 2){
@@ -1368,7 +1390,7 @@ function render(){
         const gap = Math.max(4, (w - totalW) / (items.length + 1));
         let px = cx - (totalW + gap*(items.length-1)) / 2;
         iconTop = baseY - Math.max(...items.map(t=>t.h));
-        const onLeft = cx < PAD + (total*scale)/2;
+        const onLeft = cx < SP.xc;
         const mirrorSide = ICON_MIRROR[s.icon];
         const mirror = mirrorSide === 'left' ? onLeft : mirrorSide === 'right' ? !onLeft : false;
         items.forEach(t=>{
@@ -1474,13 +1496,13 @@ function render(){
   }
 
   parts.push(`<g stroke="#17211F" stroke-width="1.2">
-    <line x1="${PAD}" y1="${SKY-18}" x2="${W-PAD}" y2="${SKY-18}"/>
-    <line x1="${PAD}" y1="${SKY-24}" x2="${PAD}" y2="${SKY-12}"/>
-    <line x1="${W-PAD}" y1="${SKY-24}" x2="${W-PAD}" y2="${SKY-12}"/></g>
-    <text x="${W/2}" y="${SKY-26}" text-anchor="middle" font-family="JetBrains Mono" font-size="${FONT.total.size}" font-weight="${fw('total')}">全寬 ${total.toFixed(2)} m</text>
-    ${titleText(W/2, SKY-26-FONT.total.size-14)}
-    <line x1="${W/2}" y1="${SKY-8}" x2="${W/2}" y2="${GROUND_Y+42}" stroke="#2C5D74" stroke-width="1" stroke-dasharray="10 4 2 4" opacity=".6"/>
-    <text x="${W/2+5}" y="${SKY+4}" font-family="JetBrains Mono" font-size="10" fill="#2C5D74">CL</text>`);
+    <line x1="${SP.x0}" y1="${SKY-18}" x2="${SP.x1}" y2="${SKY-18}"/>
+    <line x1="${SP.x0}" y1="${SKY-24}" x2="${SP.x0}" y2="${SKY-12}"/>
+    <line x1="${SP.x1}" y1="${SKY-24}" x2="${SP.x1}" y2="${SKY-12}"/></g>
+    <text x="${SP.xc}" y="${SKY-26}" text-anchor="middle" font-family="JetBrains Mono" font-size="${FONT.total.size}" font-weight="${fw('total')}">全寬 ${total.toFixed(2)} m</text>
+    ${titleText(SP.xc, SKY-26-FONT.total.size-14)}
+    <line x1="${SP.xc}" y1="${SKY-8}" x2="${SP.xc}" y2="${GROUND_Y+42}" stroke="#2C5D74" stroke-width="1" stroke-dasharray="10 4 2 4" opacity=".6"/>
+    <text x="${SP.xc+5}" y="${SKY+4}" font-family="JetBrains Mono" font-size="10" fill="#2C5D74">CL</text>`);
 
   // ── 停車格圖層（疊在斷面之上，不佔總寬）──
   const overlay = [];
@@ -1490,7 +1512,7 @@ function render(){
       <line x1="0" y1="0" x2="0" y2="8" stroke="${STALL_COLOR}" stroke-width="2.5" opacity=".55"/></pattern></defs>`);
   }
   stalls.forEach(st=>{
-    const sx = PAD + st.off*scale, sw = st.w*scale;
+    const sx = SP.x0 + st.off*scale, sw = st.w*scale;
     const y0 = GROUND_Y - 4, y1 = GROUND_Y + 38;
     overlay.push(`<rect class="stall-body" data-sid="${st.id}" x="${sx}" y="${y0}" width="${sw}" height="${y1-y0}"
         fill="url(#stallhatch)" stroke="${STALL_COLOR}" stroke-width="2.5" style="cursor:grab"/>`);
@@ -1510,7 +1532,7 @@ function render(){
   if(kerbColor !== 'none' && segs.length){
     if(kerbPos !== 'manual') kerbMarks = computeKerbMarks();     // 預設模式：位置自動推算
     kerbMarks.forEach((off, i)=>{
-      const mx = PAD + off*scale, mw = Math.max(STRIPE_M*scale, 5);
+      const mx = SP.x0 + off*scale, mw = Math.max(STRIPE_M*scale, 5);
       const my = topOfSeg(segAt(off + STRIPE_M/2));
       const lx = mx + mw/2, ly = SKY + 28;
       // 可見圖形
@@ -1531,7 +1553,7 @@ function render(){
   // ── 剩餘車道寬（扣除停車格）──
   const RES = residuals();
   RES.forEach(r=>{
-    const rx = PAD + r.a*scale, rw = (r.b - r.a)*scale, ry = 360;
+    const rx = SP.x0 + r.a*scale, rw = (r.b - r.a)*scale, ry = 360;
     const bad = r.w < CLS[roadClass].lane - 0.005;
     const col = (bad && !EXPORT_MODE) ? '#B4462F' : '#2C5D74';
     const label = `剩餘車道 ${r.w.toFixed(2)}${(bad && !EXPORT_MODE)?' ⚠':''}`;
@@ -1551,7 +1573,7 @@ function render(){
     const gy = snapGuide.kind === 'label'
       ? (GROUND_Y - 22) + TXTDY.label + snapGuide.dy - FONT.label.size + 4
       : 260 + TXTDY.num + snapGuide.dy - FONT.num.size + 4;
-    overlayLine.push(`<line x1="${PAD-10}" y1="${gy}" x2="${W-PAD+10}" y2="${gy}" stroke="#2C5D74" stroke-width="1" stroke-dasharray="6 4" opacity=".75"/>`);
+    overlayLine.push(`<line x1="${SP.x0-10}" y1="${gy}" x2="${SP.x1+10}" y2="${gy}" stroke="#2C5D74" stroke-width="1" stroke-dasharray="6 4" opacity=".75"/>`);
   }
   svg.innerHTML = parts.join('') + dims.join('') + overlayLine.join('') + grabs.join('') + overlay.join('');
   fitViewBox();
@@ -1559,6 +1581,7 @@ function render(){
     titleInput.style.display = 'none';
   syncIconBtn();
   syncLockBtn();
+  syncLenUI();
   renderTable();
   renderStalls();
   renderChecks();
@@ -1676,8 +1699,7 @@ svg.addEventListener('pointerdown', e=>{
 
 window.addEventListener('pointermove', e=>{
   const mPerPx = ()=>{
-    const scale = (W - PAD*2) / Math.max(total, 0.1);
-    return (VB.w / svg.getBoundingClientRect().width) / scale;
+    return (VB.w / svg.getBoundingClientRect().width) / span().scale;
   };
 
   if(dragTxt){
@@ -2821,6 +2843,34 @@ function openColorPop(anchor, cur, apply){
   });
 })();
 
+/* 斷面長度（同樣長度／依全寬比例＋基準全寬）為全域設定，存在瀏覽器 */
+const LEN_KEY = 'road-len';
+function syncLenUI(){
+  const sel = document.getElementById('lenmode'), box = document.getElementById('lenrefbox');
+  const ref = document.getElementById('lenref'), warn = document.getElementById('lenwarn');
+  if(!sel) return;
+  sel.value = LEN_MODE; box.hidden = LEN_MODE !== 'scale';
+  if(document.activeElement !== ref) ref.value = LEN_REF;
+  const over = LEN_MODE === 'scale' && total > LEN_REF + 0.005;
+  warn.hidden = !over;
+  if(over) warn.textContent = `目前全寬 ${total.toFixed(2)} m 超過基準，圖會比標準圖寬（不會被裁切）`;
+}
+function saveLenPref(){ try{ localStorage.setItem(LEN_KEY, JSON.stringify({mode:LEN_MODE, ref:LEN_REF})); }catch(e){} }
+(function initLen(){
+  try{
+    const v = JSON.parse(localStorage.getItem(LEN_KEY) || 'null');
+    if(v){ if(v.mode === 'scale' || v.mode === 'fit') LEN_MODE = v.mode; if(v.ref >= 5 && v.ref <= 200) LEN_REF = +v.ref; }
+  }catch(e){}
+  const sel = document.getElementById('lenmode'), ref = document.getElementById('lenref');
+  sel.addEventListener('change', ()=>{ LEN_MODE = sel.value; saveLenPref(); render(); });
+  ref.addEventListener('input', ()=>{
+    const v = parseFloat(ref.value);
+    if(v >= 5 && v <= 200){ LEN_REF = Math.round(v*100)/100; saveLenPref(); render(); }
+  });
+  ref.addEventListener('change', ()=>{ ref.value = LEN_REF; });
+  syncLenUI();
+})();
+
 /* 文字大小（名稱／數字／斷面名稱／全寬標題的大小與粗體）為全域設定，存在瀏覽器 */
 const FONT_KEY = 'road-font';
 function saveFontPref(){ try{ localStorage.setItem(FONT_KEY, JSON.stringify(FONT)); }catch(e){} }
@@ -3792,7 +3842,9 @@ const JPG_FONT = '"PingFang TC","Heiti TC","Microsoft JhengHei","Noto Sans TC","
 function sectionSVG(sec){
   const nameEl = document.getElementById('schemename');
   const saved = {total, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle, leftover,
-    font: JSON.parse(JSON.stringify(FONT)), txtdy: Object.assign({}, TXTDY), iconZoom: ICON_ZOOM, name: nameEl.value};
+    font: JSON.parse(JSON.stringify(FONT)), txtdy: Object.assign({}, TXTDY), iconZoom: ICON_ZOOM, name: nameEl.value,
+    lenMode: LEN_MODE};
+  LEN_MODE = 'fit';                                     // 現勘 JPG 一律同樣長度，不受編輯模式「依全寬比例」影響
   const sc = sectionToScheme(sec);
   const wasField = document.body.classList.contains('mode-field');
   document.body.classList.remove('mode-field');          // 需可量測版面才算得出圖框；同一段同步程式內還原，畫面不會閃
@@ -3818,6 +3870,7 @@ function sectionSVG(sec){
     total = saved.total; roadClass = saved.roadClass; segs = saved.segs; stalls = saved.stalls;
     kerbColor = saved.kerbColor; kerbPos = saved.kerbPos; kerbMarks = saved.kerbMarks; drawStyle = saved.drawStyle; leftover = saved.leftover;
     Object.assign(FONT, saved.font); Object.assign(TXTDY, saved.txtdy); ICON_ZOOM = saved.iconZoom; nameEl.value = saved.name;
+    LEN_MODE = saved.lenMode;
     if(wasField) document.body.classList.add('mode-field');
     try{ render(); }catch(e){}
   }
