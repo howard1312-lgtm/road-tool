@@ -67,6 +67,9 @@
   td{border-bottom:1px dashed var(--rule);padding:5px 4px;vertical-align:middle}
   td.num{font-family:"JetBrains Mono",monospace;text-align:right}
   .swatch{width:11px;height:11px;border-radius:2px;display:inline-block;margin-right:6px;vertical-align:-1px}
+  #labeledit{position:absolute;display:none;z-index:20;text-align:center;resize:none;overflow:hidden;
+    border:1px solid var(--blue);border-radius:4px;background:#fff;color:var(--ink);line-height:1.3;
+    font-family:"Noto Sans TC",sans-serif;padding:2px 6px;box-shadow:0 2px 8px rgba(23,33,31,.18)}
   #titleedit{position:absolute;display:none;z-index:20;text-align:center;
     border:1px solid var(--blue);border-radius:4px;background:#fff;color:var(--ink);
     font-family:"Noto Sans TC",sans-serif;font-weight:700;padding:2px 8px;
@@ -79,6 +82,14 @@
   .fixtot{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--ink-soft);white-space:nowrap;cursor:pointer;margin-left:4px}
   .fixtot input{margin:0;cursor:pointer}
   #total.ro{color:var(--ink-soft);background:transparent}
+  .plate-left{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .hd-btn{padding:3px 8px !important;font-size:12px !important}
+  .hd-btn:disabled{opacity:.35;cursor:default}
+  .facing-info{font-size:12px;color:var(--ink-soft)}
+  ul.hint{list-style:none;padding:0;margin:2px 0 8px}
+  ul.hint li{padding-left:1em;text-indent:-1em;line-height:1.6}
+  ul.hint li::before{content:'・'}
+  .hd-lbl{font-size:12px;color:var(--ink-soft);white-space:nowrap;margin-right:-6px}
   .lenref{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--ink-soft)}
   .lenref[hidden]{display:none}
   .lenref input[type=number]{width:58px}
@@ -92,6 +103,7 @@
   tr.drop-below td{box-shadow:inset 0 -2px 0 var(--blue)}
   .label-in{width:88px;font-size:13px;padding:2px 4px;border:1px solid transparent;
     border-radius:3px;background:transparent;color:var(--ink)}
+  textarea.label-in{resize:none;overflow:hidden;line-height:1.3;font-family:inherit;vertical-align:middle;display:inline-block}
   .label-in:hover{border-color:var(--rule);background:#fff}
   .label-in:focus{border-color:var(--blue);background:#fff}
   .color-dot{width:18px;height:18px;padding:0;border:1px solid var(--rule);border-radius:3px;
@@ -447,12 +459,18 @@ body.mode-field .wrap{display:none}
 
   <div class="plate">
     <div class="plate-head">
-      <h2>斷面圖（由左至右）</h2>
+      <div class="plate-left"><h2>斷面圖（由左至右）</h2>
+        <button class="ghost hd-btn" id="undo" title="回到上一步（Ctrl+Z）" disabled>↶ 上一步</button>
+        <button class="ghost hd-btn" id="redo" title="下一步（Ctrl+Y）" disabled>↷ 下一步</button>
+        <button class="ghost hd-btn" id="flipdir" title="左右對調：項目順序反過來、車道行向對調；現勘斷面的斷面方向改成相反方向">⇄ 翻轉方向</button>
+        <span id="facinginfo" class="facing-info"></span></div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label for="drawstyle" class="hd-lbl">斷面圖形式：</label>
         <select id="drawstyle" class="mini-sel" style="max-width:120px" title="呈現形式">
           <option value="color" selected>彩色圖塊</option>
           <option value="line">線條式（送審圖）</option>
         </select>
+        <label for="lenmode" class="hd-lbl">斷面長度：</label>
         <select id="lenmode" class="mini-sel" style="max-width:120px" title="斷面長度：同樣長度＝每個斷面都畫滿圖寬；依全寬比例＝依基準全寬換算長度，不同斷面可比較寬窄">
           <option value="fit" selected>同樣長度</option>
           <option value="scale">依全寬比例</option>
@@ -476,14 +494,26 @@ body.mode-field .wrap{display:none}
       <span class="fb-group"><label for="fs-total">全寬標題</label>
         <input id="fs-total" type="number" min="10" max="48" step="1" value="21"><span class="unit">px</span>
         <button class="icon-btn on" id="fb-total" title="全寬標題粗體">B</button></span>
+      <span class="fb-group"><label for="labeldir">名稱方向</label>
+        <select id="labeldir" class="mini-sel" style="max-width:76px" title="自動＝放得下橫書、放不下直書；彩色圖塊與線條式各自設定，跟著配置存。名稱可在圖上雙擊編輯、按 Enter 換行">
+          <option value="auto">自動</option><option value="h">橫書</option><option value="v">直書</option></select></span>
       <span class="fb-group"><label for="fs-icon">圖示大小</label>
         <input id="fs-icon" type="number" min="20" max="200" step="5" value="100"><span class="unit">%</span></span>
       <button class="ghost" id="resettxt" style="padding:4px 9px;font-size:12px" title="清除所有文字的上下位移">重置文字位置</button>
       <button class="ghost" id="toggleicons" style="padding:4px 9px;font-size:12px" title="一鍵顯示／隱藏各斷面的預設圖示">顯示斷面圖示</button>
     </div>
     <input id="titleedit" type="text" placeholder="輸入斷面名稱" maxlength="60">
+    <textarea id="labeledit" rows="1" title="Enter 換行；點旁邊空白處完成，Esc 取消"></textarea>
     <svg id="draw" viewBox="0 0 1000 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="道路橫斷面示意圖"></svg>
-    <p class="hint">拖曳任一名稱＝整排名稱一起上下移動（保持對齊）；拖曳任一數字＝整排數字一起移動。按住 Alt 或 Shift 拖曳則只單獨移動該一個，並會自動吸附對齊其他文字的高度（出現藍色虛線即表示已對齊）。按「重置文字位置」可復原。按住圖上任一分隔線可連續拖曳：未鎖定的項目自由增減，鎖定的項目寬度不變（只會平移）；相鄰項目縮到法定下限後，會自動往外一項繼續讓寬。紅色虛線框＝未達法定最小寬度。</p>
+    <ul class="hint">
+      <li>拖曳任一名稱＝整排名稱一起上下移動（保持對齊）；拖曳任一數字＝整排數字一起移動。</li>
+      <li>按住 Alt 或 Shift 拖曳名稱或數字＝只單獨移動該一個，並會自動吸附對齊其他文字的高度（出現藍色虛線即表示已對齊）；按「重置文字位置」可復原。</li>
+      <li>雙擊名稱可直接編輯，按 Enter 換行。</li>
+      <li>按住圖上任一分隔線可連續拖曳，每格 0.1 m；按住 Shift 拖曳＝每格 0.01 m。</li>
+      <li>拖曳時未鎖定的項目自由增減，鎖定的項目寬度不變（只會平移）；相鄰項目縮到法定下限後，會自動往外一項繼續讓寬。</li>
+      <li>紅色虛線框＝未達法定最小寬度。</li>
+      <li>上一步 Ctrl+Z、下一步 Ctrl+Y（切換配置、產生斷面、匯入後重新計算）。</li>
+    </ul>
   </div>
 
   <div class="cols">
@@ -735,6 +765,44 @@ const schemeTitle = ()=> (document.getElementById('schemename')?.value || '').tr
 
 /* 逐項名稱：s.label 覆寫 KIND 預設名稱 */
 const labelOf = s => (s.label != null && s.label !== '') ? s.label : KIND[s.kind].label;
+/* 名稱可手動換行（\n）；圖以外的文字（檢核、複製）用不換行的版本 */
+const labelLines = s => { const L = String(labelOf(s)).split('\n').map(x=>x.trim()).filter(x=>x !== ''); return L.length ? L : ['']; };
+const labelFlat = s => labelLines(s).join('');
+const normLabel = v => String(v || '').replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(x=>x !== '').join('\n');
+/* 名稱方向（每個配置各自保存，彩色圖塊與線條式分開）：auto＝放得下橫書、放不下直書；h＝橫書；v＝直書 */
+const LABEL_DIR_DEF = {color:'auto', line:'v'};
+let LABEL_DIR = {...LABEL_DIR_DEF};
+/* 現勘資訊（現勘匯入的配置才有）：斷面方向、方向補充等；跟著配置存，翻轉方向時一併更新 */
+let SURVEY = null;
+var HIST = null;   // 上一步／下一步紀錄（定義在後面）
+function labelMode(s, w, size, style){
+  const d = LABEL_DIR[style] || LABEL_DIR_DEF[style];
+  if(d === 'h' || d === 'v') return d;
+  return labelLines(s).every(L => w > textW(L, size) + 8) ? 'h' : 'v';
+}
+const LBL_LH = size => Math.round(size * 1.25);            // 橫書行距
+const LBL_CW = size => size + 6;                            // 直書欄距
+/* 橫書多行：anchor='bottom' 最後一行基線在 y（往上堆）；'top' 第一行基線在 y（往下排） */
+function htextLines(lines, cx, y, size, fill, weight, anchor){
+  const lh = LBL_LH(size), y0 = anchor === 'bottom' ? y - (lines.length - 1) * lh : y;
+  const t = lines.map((L,i)=>`<tspan x="${cx}" dy="${i===0?0:lh}">${esc(L)}</tspan>`).join('');
+  return `<text x="${cx}" y="${y0}" text-anchor="middle" font-family="Noto Sans TC" font-size="${size}" font-weight="${weight||500}" fill="${fill}">${t}</text>`;
+}
+/* 直書多欄（每行一欄，由右往左排）：anchor='bottom' 各欄底部齊於 y；'top' 各欄第一字基線在 y */
+function vtextCols(lines, cx, y, size, fill, weight, anchor){
+  const cw = LBL_CW(size), n = lines.length;
+  return lines.map((L,i)=>{
+    const x = cx + ((n - 1) / 2 - i) * cw;
+    return anchor === 'bottom'
+      ? vtext(esc(L), x, y, size, fill, 'Noto Sans TC', `font-weight="${weight||500}"`)
+      : vtextDown(esc(L), x, y, size, fill, weight);
+  }).join('');
+}
+/* 名稱區塊大小（含行／欄數） */
+function labelBox(lines, size, mode){
+  if(mode === 'h') return {w: Math.max(...lines.map(L=>textW(L, size))), h: lines.length * LBL_LH(size)};
+  return {w: lines.length * LBL_CW(size), h: Math.max(...lines.map(L=>[...L].length)) * (size + 3)};
+}
 let kerbColor = 'none', kerbPos = 'ditch', kerbMarks = [];   // 路緣標線：顏色、位置模式、各標線左緣(m)
 const STALL_COLOR = '#C2743A';
 
@@ -843,7 +911,16 @@ function iconImgOf(key, dir){
 /* 屬於「人」的圖示，寬度足夠時以雙人圖示組合呈現 */
 const PEOPLE_ICONS = {ped:true, ped_two:true};
 
+/* 斷面圖示顯示／隱藏：電腦全域設定（road-icons）。null＝尚未設定（照各配置存的圖示顯示）
+   true＝顯示（切換配置時，完全沒有圖示的配置自動套用預設圖示）；false＝隱藏（各配置的圖示設定保留，只是不畫） */
+let SHOW_ICONS = null;
+try{ const v = localStorage.getItem('road-icons'); if(v === '1') SHOW_ICONS = true; else if(v === '0') SHOW_ICONS = false; }catch(e){}
+function saveIconPref(){ try{ if(SHOW_ICONS !== null) localStorage.setItem('road-icons', SHOW_ICONS ? '1' : '0'); }catch(e){} }
+function applyDefaultIcons(){ segs.forEach(s=>{ const set = ICON_SETS[s.kind]; if(set) s.icon = set.def; }); }
+/* 切換／新增／匯入配置後：設定為「顯示」且該配置完全沒有圖示 → 套用預設圖示；已有圖示者保留原設定 */
+function applyIconPref(){ if(SHOW_ICONS === true && segs.length && !segs.some(s=>s.icon)) applyDefaultIcons(); }
 function iconImg(s){
+  if(SHOW_ICONS === false) return null;
   if(!s.icon) return null;
   const ic = ICONS[s.icon];
   if(!ic) return null;
@@ -1000,6 +1077,7 @@ function generate(){
   segs = [...L, ...mid, ...R.reverse()];
   if(slack!=='none' && !segs.some(s=>!s.locked)) segs.forEach(s=>{ if(s.kind===slack) s.locked=false; });
   fit();
+  applyIconPref();
   assignLaneDirections();
 
   // 停車格圖層：貼齊路邊（自人行道／公共設施帶內緣起算，寬度涵蓋側溝）
@@ -1009,6 +1087,7 @@ function generate(){
   if(sc >= 2) stalls.push({id:uid++, off: round2(total - edgeOffset('R') - sw), w: round2(sw)});
 
   render();
+  histReset();
 }
 
 /* 路緣內側位置：人行道／公共設施帶之後的第一個位置（左側回傳距左緣、右側回傳距右緣） */
@@ -1168,7 +1247,7 @@ function renderLineStyle(){
   const LABEL_SIZE = FONT.label.size;  // 名稱大小（可設定）
   const NUM_Y = RULE_Y + 28;    // 數字基準列（未碰撞時，在尺寸線下方）
   const NUM_Y_UP = RULE_Y - 30; // 碰撞時移到尺寸線上方（高於分界刻度頂端）
-  const LABEL_TOP = RULE_Y + 52;// 直書名稱起點（全部齊頂）
+  const LABEL_TOP = RULE_Y + 52 + Math.max(0, LABEL_SIZE - 18);// 名稱第一字基線（全部齊頂；字放大時往下讓開數字）
   let parts = [], grabs = [], x = SP.x0;
 
   // 先算每段中心與數字寬，決定哪些數字需要上移（與相鄰不上移者重疊時）
@@ -1242,13 +1321,13 @@ function renderLineStyle(){
       }
     }
 
-    // 直書名稱：固定大小、全部齊頂（可拖曳上下微調）
+    // 名稱：固定大小、全部齊頂（可拖曳上下微調、雙擊編輯；依「名稱方向」直書或橫書，可手動換行）
     const lDy = TXTDY.label + (s.labelDy || 0);
     const lTop = LABEL_TOP + lDy;
-    const lChars = [...labelOf(s)].length;
+    const lLines = labelLines(s), lMode = labelMode(s, w, LABEL_SIZE, 'line'), lBox = labelBox(lLines, LABEL_SIZE, lMode);
     parts.push(`<g class="txt-drag" data-tid="${s.id}" data-tkind="label" style="cursor:ns-resize">
-      <rect x="${cx - LABEL_SIZE/2 - 4}" y="${lTop - LABEL_SIZE}" width="${LABEL_SIZE+8}" height="${lChars*(LABEL_SIZE+3)+6}" fill="rgba(0,0,0,0)"/>
-      ${vtextDown(labelOf(s), cx, lTop, LABEL_SIZE, col, fw('label'))}</g>`);
+      <rect x="${cx - lBox.w/2 - 5}" y="${lTop - LABEL_SIZE}" width="${lBox.w+10}" height="${lBox.h+8}" fill="rgba(0,0,0,0)"/>
+      ${lMode === 'h' ? htextLines(lLines, cx, lTop, LABEL_SIZE, col, fw('label'), 'top') : vtextCols(lLines, cx, lTop, LABEL_SIZE, col, fw('label'), 'top')}</g>`);
 
     if(i < meta.length-1)
       grabs.push(`<line class="grab" data-i="${i}" x1="${x+w}" y1="${RULE_Y-TICK_UP}" x2="${x+w}" y2="${RULE_Y+20}" stroke="rgba(0,0,0,0)" stroke-width="16" style="cursor:ew-resize"/>`);
@@ -1280,6 +1359,9 @@ function renderLineStyle(){
   syncIconBtn();
   syncLockBtn();
   syncLenUI();
+  syncLabelDirUI();
+  syncFacingUI();
+  histTouch();
   renderTable();
   renderStalls();
   renderChecks();
@@ -1328,7 +1410,7 @@ function render(){
   if(!fixTotal) settle();
   if(drawStyle === 'line') return renderLineStyle();
   const SP = span(), scale = SP.scale;
-  let x = SP.x0, parts=[], dims=[], grabs=[], overlayLine=[], narrowRow = 0;
+  let x = SP.x0, parts=[], dims=[], grabs=[], overlayLine=[], narrowRow = 0, numLow = -Infinity;
   parts.push(`<line x1="${SP.x0}" y1="${GROUND_Y}" x2="${SP.x1}" y2="${GROUND_Y}" stroke="#17211F" stroke-width="1.5"/>`);
 
   // 有顯示圖示的斷面，其名稱改置於斷面下方；尺寸標註列整體下移讓位
@@ -1339,9 +1421,8 @@ function render(){
     const LSZ = FONT.label.size;
     segs.forEach(s=>{
       if(!iconImg(s)) return;
-      const lbl = labelOf(s), sw = s.w*scale;
-      const horiz = sw > textW(lbl, LSZ) + 8;
-      const depth = horiz ? LSZ : [...lbl].length * (LSZ + 3);
+      const sw = s.w*scale, lines = labelLines(s), mode = labelMode(s, sw, LSZ, 'color');
+      const depth = labelBox(lines, LSZ, mode).h;
       if(depth > labelDepth) labelDepth = depth;
     });
   }
@@ -1444,21 +1525,26 @@ function render(){
     const lDyC = TXTDY.label + (s.labelDy || 0);
     const below = !!IM;
     const LY = (below ? LABEL_BELOW_TOP + FONT.label.size : GROUND_Y - 22) + lDyC;
+    let labelTop = null;                                   // 路面上方名稱的頂端（車道箭頭在它上方讓位）
     if(w > 6){
-      const LBL = labelOf(s), LSZ = FONT.label.size;
-      const horiz = w > textW(LBL, LSZ) + 8;
-      let inner, hitW, hitH, hitY;
-      if(horiz){
-        inner = `<text x="${cx}" y="${LY}" text-anchor="middle" font-family="Noto Sans TC" font-size="${LSZ}" font-weight="${fw('label')}" fill="#17211F">${LBL}</text>`;
-        hitW = textW(LBL, LSZ) + 10; hitH = LSZ + 10; hitY = LY - LSZ;
+      const LSZ = FONT.label.size, lines = labelLines(s), mode = labelMode(s, w, LSZ, 'color'), box = labelBox(lines, LSZ, mode);
+      let inner, hitW = box.w + 10, hitH = box.h + 10, hitY;
+      if(mode === 'h' && below){
+        inner = htextLines(lines, cx, LY, LSZ, '#17211F', fw('label'), 'top');
+        hitY = LY - LSZ;
+      } else if(mode === 'h'){
+        inner = htextLines(lines, cx, LY, LSZ, '#17211F', fw('label'), 'bottom');
+        hitY = LY - box.h + (LBL_LH(LSZ) - LSZ) - 2;
+        labelTop = LY - (lines.length - 1) * LBL_LH(LSZ) - LSZ * 0.88;
       } else if(below){
         // 下方直書：由上往下排
-        inner = vtextDown(LBL, cx, LY, LSZ, '#17211F', fw('label'));
-        hitW = LSZ + 10; hitH = [...LBL].length * (LSZ + 3) + 10; hitY = LY - LSZ;
+        inner = vtextCols(lines, cx, LY, LSZ, '#17211F', fw('label'), 'top');
+        hitY = LY - LSZ;
       } else {
-        inner = vtext(LBL, cx, GROUND_Y - 14 + lDyC, LSZ, '#17211F', 'Noto Sans TC', `font-weight="${fw('label')}"`);
-        hitW = LSZ + 10; hitH = [...LBL].length * (LSZ + 2) + 10;
-        hitY = (GROUND_Y - 14 + lDyC) - hitH + 6;
+        const by = GROUND_Y - 14 + lDyC;
+        inner = vtextCols(lines, cx, by, LSZ, '#17211F', fw('label'), 'bottom');
+        hitY = by - box.h + 6;
+        labelTop = by - (Math.max(...lines.map(L=>[...L].length)) - 1) * (LSZ + 2) - LSZ * 0.88;
       }
       parts.push(`<g class="txt-drag" data-tid="${s.id}" data-tkind="label" style="cursor:ns-resize">
         <rect x="${cx - hitW/2}" y="${hitY}" width="${hitW}" height="${hitH}" fill="rgba(0,0,0,0)"/>${inner}</g>`);
@@ -1477,7 +1563,7 @@ function render(){
           if(contentW > maxw) fscale *= maxw / contentW;   // 車道太窄則縮小
           const fh = 140 * fscale;
           // 有圖示時箭頭置於圖示正上方，否則沿用名稱上方的固定基準
-          const ARROW_BOTTOM = (iconTop !== null) ? (iconTop - 12) : (GROUND_Y - 22 + lDyC - 20);
+          const ARROW_BOTTOM = (iconTop !== null) ? (iconTop - 12) : Math.min(GROUND_Y - 42 + lDyC, labelTop === null ? Infinity : labelTop - 4);
           const ARROW_TOP = ARROW_BOTTOM - fh;
           // path 在 0..100 viewBox 內、內容中心固定於 x=50 → 平移使 x=50 對齊箭頭中心 acx
           const tx = acx - 50 * fscale;
@@ -1504,11 +1590,13 @@ function render(){
     const nDy = TXTDY.num + (s.numDy || 0);
     if(w > textW(numTxt, NSZ) + 6){
       const ny = dy - 8 + nDy;
+      numLow = Math.max(numLow, ny);
       dims.push(`<g class="txt-drag" data-tid="${s.id}" data-tkind="num" style="cursor:ns-resize">
         <rect x="${cx - textW(numTxt,NSZ)/2 - 4}" y="${ny - NSZ}" width="${textW(numTxt,NSZ)+8}" height="${NSZ+8}" fill="rgba(0,0,0,0)"/>
         <text x="${cx}" y="${ny}" text-anchor="middle" font-family="JetBrains Mono" font-size="${NSZ}" font-weight="${fw('num')}" fill="#B4462F">${numTxt}</text></g>`);
     } else {
       const ny = dy + 22 + (narrowRow++ % 2) * 22 + nDy;      // 太窄：移到標註線下方，兩排交錯
+      numLow = Math.max(numLow, ny);
       dims.push(`<line x1="${cx}" y1="${dy+2}" x2="${cx}" y2="${ny-13}" stroke="#B4462F" stroke-width="1" opacity=".55"/>
         <g class="txt-drag" data-tid="${s.id}" data-tkind="num" style="cursor:ns-resize">
         <rect x="${cx - textW(numTxt,NSZ)/2 - 4}" y="${ny - NSZ}" width="${textW(numTxt,NSZ)+8}" height="${NSZ+8}" fill="rgba(0,0,0,0)"/>
@@ -1529,8 +1617,12 @@ function render(){
     if(w>60) parts.push(`<text x="${x+w/2}" y="${GROUND_Y+24}" text-anchor="middle" font-size="${FONT.label.size}" font-family="Noto Sans TC" fill="#B4462F">未配置</text>`);
   }
   if(leftover < -0.02 && !EXPORT_MODE){             // 固定全寬時超出：在全寬終點畫紅線並標示超出多少
+    // 標示放在所有寬度數字的下方另一列；紅線在數字列處斷開，避免壓到數字
+    const NSZ = FONT.num.size, nl = isFinite(numLow) ? numLow : GROUND_Y + 60;
+    const oy = nl + NSZ + 14;
     parts.push(`<line x1="${SP.x1}" y1="${SKY-30}" x2="${SP.x1}" y2="${GROUND_Y+46}" stroke="#B4462F" stroke-width="2" stroke-dasharray="6 4"/>
-      <text x="${SP.x1+6}" y="${GROUND_Y+60}" font-family="Noto Sans TC" font-size="${FONT.num.size}" font-weight="700" fill="#B4462F">超出 ${(-leftover).toFixed(2)} m</text>`);
+      <line x1="${SP.x1}" y1="${nl + 8}" x2="${SP.x1}" y2="${oy + 4}" stroke="#B4462F" stroke-width="2" stroke-dasharray="6 4"/>
+      <text x="${SP.x1+6}" y="${oy}" font-family="Noto Sans TC" font-size="${NSZ}" font-weight="700" fill="#B4462F">超出 ${(-leftover).toFixed(2)} m</text>`);
   }
 
   parts.push(`<g stroke="#17211F" stroke-width="1.2">
@@ -1620,6 +1712,9 @@ function render(){
   syncIconBtn();
   syncLockBtn();
   syncLenUI();
+  syncLabelDirUI();
+  syncFacingUI();
+  histTouch();
   renderTable();
   renderStalls();
   renderChecks();
@@ -1628,6 +1723,16 @@ function render(){
 /* ═══════ 拖曳分隔線（連續拖曳、可串接相鄰項目） ═══════ */
 let drag = null;   // {i, startX, base:[寬度快照]}
 
+/* 拖曳量對齊：分隔線左側第一個未鎖定項目（主要被調整的項目）的寬度落在 unit 的倍數上
+   （例：3.25 拖一格 → 3.3 → 3.4）；左側都鎖定時，拖曳量本身取 unit 的倍數 */
+function quantDelta(base, i, raw, unit){
+  if(Math.abs(raw) < unit / 2) return 0;          // 手微微晃動不改寬度
+  const q = v => Math.round(Math.round(v / unit) * unit * 100) / 100;
+  for(let j = i; j >= 0; j--){
+    if(segs[j] && !segs[j].locked) return round2(q(base[j] + raw) - base[j]);
+  }
+  return q(raw);
+}
 function applyDelta(base, i, d){
   const w = base.slice();
   if(Math.abs(d) < 0.001) return w;
@@ -1683,12 +1788,21 @@ let dragKerb = null;   // {idx, startX, base}
 let dragTxt = null;   // {id, kind, startY, base, solo}
 let snapGuide = null; // 吸附時顯示的對齊輔助線 {kind, dy}
 
+let lastLabelTap = null;   // 名稱雙擊判斷 {id, t}
 svg.addEventListener('pointerdown', e=>{
   const td = e.target.closest('.txt-drag');
   if(td){
     const s = segs.find(s=>s.id==td.dataset.tid);
     if(s){
       const kind = td.dataset.tkind;
+      if(kind === 'label'){
+        const now = Date.now();
+        if(lastLabelTap && lastLabelTap.id === s.id && now - lastLabelTap.t < 450){
+          lastLabelTap = null; dragTxt = null; e.preventDefault();
+          openLabelEdit(s.id); return;
+        }
+        lastLabelTap = {id:s.id, t:now};
+      }
       const solo = e.altKey || e.shiftKey;        // 按住 Alt/Shift＝只移動這一個
       dragTxt = {id:s.id, kind, startY:e.clientY, solo,
                  base: solo ? ((kind==='label' ? s.labelDy : s.numDy) || 0) : TXTDY[kind]};
@@ -1798,7 +1912,7 @@ window.addEventListener('pointermove', e=>{
   }
 
   if(!drag) return;
-  const d = (e.clientX - drag.startX) * mPerPx();
+  const d = quantDelta(drag.base, drag.i, (e.clientX - drag.startX) * mPerPx(), e.shiftKey ? 0.01 : 0.1);
   const w = applyDelta(drag.base, drag.i, d);
   segs.forEach((s,j)=> s.w = w[j]);
   leftover = round2(total - segs.reduce((a,s)=>a+s.w,0));
@@ -1819,9 +1933,9 @@ function renderTable(){
     : segs.map((s,i)=>{
       const L = legalMin(s.kind, s), bad = L && chkW(s) < L.min - 0.005;
       return `<tr draggable="true" data-row="${i}" data-sid="${s.id}">
-        <td><span class="drag-handle" title="拖曳調整順序">⠿</span><button type="button" class="color-dot" data-color="${s.id}" style="background:${toHex(colorOf(s))}" title="變更顏色（${toHex(colorOf(s))}）"></button><input type="text" class="label-in" data-label="${s.id}" value="${labelOf(s).replace(/"/g,'&quot;')}" title="可修改名稱，會連動斷面圖">${bad?'<span class="badge">未達標</span>':''}</td>
-        <td class="num"><input type="number" step="0.05" min="${HARD_MIN}" max="${HARD_MAX}" value="${s.w.toFixed(2)}" data-w="${s.id}" style="width:70px"></td>
-        <td class="num">${CLEAR_KINDS.includes(s.kind) ? `<input type="number" step="0.05" min="0" placeholder="—" value="${hasClear(s)?s.clearW.toFixed(2):''}" data-cw="${s.id}" style="width:64px" title="淨寬：扣除障礙物後最窄可通行寬度（法規檢核以此為準）">` : '<span style="color:var(--ink-soft)">—</span>'}</td>
+        <td><span class="drag-handle" title="拖曳調整順序">⠿</span><button type="button" class="color-dot" data-color="${s.id}" style="background:${toHex(colorOf(s))}" title="變更顏色（${toHex(colorOf(s))}）"></button><textarea class="label-in" data-label="${s.id}" rows="${labelLines(s).length}" title="可修改名稱，會連動斷面圖；Enter 換行">${esc(labelLines(s).join('\n'))}</textarea>${bad?'<span class="badge">未達標</span>':''}</td>
+        <td class="num"><input type="number" step="0.1" min="0" max="${HARD_MAX}" value="${s.w.toFixed(2)}" data-w="${s.id}" style="width:70px"></td>
+        <td class="num">${CLEAR_KINDS.includes(s.kind) ? `<input type="number" step="0.1" min="0" placeholder="—" value="${hasClear(s)?s.clearW.toFixed(2):''}" data-cw="${s.id}" style="width:64px" title="淨寬：扣除障礙物後最窄可通行寬度（法規檢核以此為準）">` : '<span style="color:var(--ink-soft)">—</span>'}</td>
         <td class="num" style="color:${bad?'var(--pencil)':'var(--ink-soft)'}">${L?L.min.toFixed(2):'—'}</td>
         <td class="num">${total>0?(s.w/total*100).toFixed(1):'0'}%</td>
         <td><div class="cell-actions">
@@ -1839,7 +1953,7 @@ function renderTable(){
           ${(s.kind==='lane' || hasBothDirs(s)) ? `<button class="icon-btn" data-dir="${s.id}" title="朝向（↑前＝背向觀者／↓後＝面向觀者／⇅雙向＝無分向線）">${s.kind==='lane' ? DIR_LABEL[s.dir||'up'] : ((s.dir||'up')==='up'?'↑前':'↓後')}</button>` : ''}
           ${STALL_KINDS.includes(s.kind) ? `<select class="mini-sel" data-incl="${s.id}" title="停車格寬度是否含側溝">
             <option value=""${!s.inclDitch?' selected':''}>不含溝</option><option value="1"${s.inclDitch?' selected':''}>含側溝</option></select>
-            ${s.inclDitch ? `<input type="number" step="0.05" min="0" placeholder="溝寬" value="${s.ditchW>0?s.ditchW.toFixed(2):''}" data-dw="${s.id}" style="width:58px;font-size:12px;padding:2px 4px" title="其中側溝寬（選填）">
+            ${s.inclDitch ? `<input type="number" step="0.1" min="0" placeholder="溝寬" value="${s.ditchW>0?s.ditchW.toFixed(2):''}" data-dw="${s.id}" style="width:58px;font-size:12px;padding:2px 4px" title="其中側溝寬（選填）">
             <select class="mini-sel" data-dside="${s.id}" title="側溝位置">
               <option value=""${!(s.ditchSide==='L'||s.ditchSide==='R')?' selected':''}>自動${stallDitchSide(segs,i)==='L'?'左':'右'}</option>
               <option value="L"${s.ditchSide==='L'?' selected':''}>溝在左</option><option value="R"${s.ditchSide==='R'?' selected':''}>溝在右</option></select>` : ''}` : ''}
@@ -1881,9 +1995,12 @@ function renderTable(){
   tb.querySelectorAll('[data-label]').forEach(inp=>{
     inp.onchange = e=>{
       const s = segs.find(s=>s.id==e.target.dataset.label);
-      s.label = e.target.value.trim(); render();
+      const v = normLabel(e.target.value);
+      if(v) s.label = v; else delete s.label;
+      render();
     };
-    inp.onkeydown = e=>{ if(e.key==='Enter') e.target.blur(); };
+    inp.oninput = ()=>{ inp.rows = Math.max(1, inp.value.split('\n').length); };
+    inp.onkeydown = e=>{ if(e.key==='Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); e.target.blur(); } };
   });
 
   /* 拖曳調整順序 */
@@ -1926,7 +2043,7 @@ function renderTable(){
   });
   tb.querySelectorAll('[data-icon]').forEach(sel=> sel.onchange = e=>{
     const s = segs.find(s=>s.id==e.target.dataset.icon);
-    if(s){ s.icon = e.target.value || undefined; render(); } });
+    if(s){ s.icon = e.target.value || undefined; if(s.icon && SHOW_ICONS === false){ SHOW_ICONS = true; saveIconPref(); } render(); } });
   tb.querySelectorAll('[data-mix]').forEach(sel=> sel.onchange = e=>{
     const s = segs.find(s=>s.id==e.target.dataset.mix);
     if(s){ s.mixIcon = e.target.value || undefined; render(); } });
@@ -1966,7 +2083,15 @@ function renderTable(){
     const [i,d]=b.dataset.mv.split(':').map(Number), j=i+d;
     if(j<0||j>=segs.length) return;
     [segs[i],segs[j]]=[segs[j],segs[i]]; render(); });
+  if(tableRefocus){ const el = tb.querySelector(tableRefocus); tableRefocus = null; if(el) el.focus(); }
 }
+/* 明細表寬度欄按上下鍵：每按一次就更新（表格重繪），重繪後游標留在同一欄，可以連續按 */
+let tableRefocus = null;
+document.getElementById('tbody').addEventListener('keydown', e=>{
+  if(e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  const t = e.target, d = t.dataset || {};
+  for(const k of ['w','cw','dw']) if(d[k] != null){ tableRefocus = `[data-${k}="${d[k]}"]`; return; }
+});
 
 /* 車道寬度平均分配：只重分配車道之間的總寬，其他項目完全不動 */
 document.getElementById('eqlanes').onclick = ()=>{
@@ -2009,7 +2134,8 @@ function syncLockBtn(){
 
 /* 圖示批次開關 */
 document.getElementById('iconall').onclick = ()=>{
-  segs.forEach(s=>{ const set = ICON_SETS[s.kind]; if(set) s.icon = set.def; });
+  applyDefaultIcons();
+  if(SHOW_ICONS === false){ SHOW_ICONS = true; saveIconPref(); }
   render();
 };
 document.getElementById('iconnone').onclick = ()=>{
@@ -2046,7 +2172,7 @@ function coverText(st){
   segs.forEach(s=>{
     const a = o, b = o + s.w;
     const ov = Math.min(b, st.off + st.w) - Math.max(a, st.off);
-    if(ov > 0.02) hit.push(`${labelOf(s)} ${ov.toFixed(2)}`);
+    if(ov > 0.02) hit.push(`${labelFlat(s)} ${ov.toFixed(2)}`);
     o = b;
   });
   return hit.length ? '覆蓋：' + hit.join('、') : '未覆蓋任何項目';
@@ -2252,6 +2378,162 @@ document.getElementById('resettxt').onclick = ()=>{
   segs.forEach(s=>{ delete s.labelDy; delete s.numDy; });
   render();
 };
+/* ═══ 雙擊圖上名稱直接編輯（Enter 換行；點旁邊完成、Esc 取消） ═══ */
+const labelEdit = document.getElementById('labeledit');
+let labelEditId = null;
+function openLabelEdit(id){
+  const s = segs.find(x=>x.id == id); if(!s) return;
+  const g = svg.querySelector(`.txt-drag[data-tkind="label"][data-tid="${id}"]`); if(!g) return;
+  const r = g.getBoundingClientRect(), pr = svg.parentElement.getBoundingClientRect();
+  const k = svg.getBoundingClientRect().width / VB.w;               // 圖面縮放
+  const fs = Math.max(12, Math.min(30, FONT.label.size * k));
+  labelEditId = id;
+  labelEdit.value = labelLines(s).join('\n');
+  labelEdit.rows = Math.max(1, labelLines(s).length);
+  labelEdit.style.fontSize = fs + 'px';
+  const wdt = Math.max(130, Math.min(320, r.width + 40));
+  labelEdit.style.width = wdt + 'px';
+  labelEdit.style.left = (r.left - pr.left + r.width/2 - wdt/2) + 'px';
+  labelEdit.style.top = (r.top - pr.top - 4) + 'px';
+  labelEdit.style.display = 'block';
+  labelEdit.focus(); labelEdit.select();
+}
+function closeLabelEdit(commit){
+  if(labelEditId === null) return;
+  const s = segs.find(x=>x.id == labelEditId);
+  labelEditId = null;
+  labelEdit.style.display = 'none';
+  if(commit && s){
+    const v = normLabel(labelEdit.value);
+    if(v) s.label = v; else delete s.label;
+  }
+  render();
+}
+labelEdit.addEventListener('input', ()=>{ labelEdit.rows = Math.max(1, labelEdit.value.split('\n').length); });
+labelEdit.addEventListener('keydown', e=>{
+  if(e.key === 'Escape'){ e.preventDefault(); closeLabelEdit(false); }
+  else if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); closeLabelEdit(true); }
+});
+labelEdit.addEventListener('blur', ()=> closeLabelEdit(true));
+
+/* ═══ 翻轉方向：項目左右對調、車道行向對調；現勘斷面的斷面方向改成相反方向 ═══ */
+const OPP_FACE = {'北':'南','南':'北','東':'西','西':'東','東北':'西南','西南':'東北','西北':'東南','東南':'西北'};
+const swapLR = v => v === 'L' ? 'R' : v === 'R' ? 'L' : v;
+function flipSection(){
+  if(!segs.length) return;
+  const S = segSum();
+  segs.reverse();
+  segs.forEach(s=>{
+    if(s.dir === 'up') s.dir = 'down'; else if(s.dir === 'down') s.dir = 'up';     // 雙向（both）維持
+    if(s.ditchSide === 'L' || s.ditchSide === 'R') s.ditchSide = swapLR(s.ditchSide);
+    if(s.mixPos === 'left') s.mixPos = 'right'; else if(s.mixPos === 'right') s.mixPos = 'left';
+  });
+  stalls.forEach(st=>{ st.off = clamp(round2(S - st.off - st.w), 0, round2(Math.max(total, S) - st.w)); });
+  kerbMarks = kerbMarks.map(p=> round2(S - p - STRIPE_M)).sort((a,b)=>a-b);
+  if(SURVEY){
+    if(OPP_FACE[SURVEY.facing]) SURVEY.facing = OPP_FACE[SURVEY.facing];
+    if(SURVEY.startSide === 'L' || SURVEY.startSide === 'R') SURVEY.startSide = swapLR(SURVEY.startSide);
+    if(!SURVEY.flipped){
+      if(SURVEY.facingNote) SURVEY.facingNote = `原${SURVEY.facingNote}（已翻轉）`;
+      SURVEY.flipped = true;
+    } else {
+      const m = /^原([\s\S]*)（已翻轉）$/.exec(SURVEY.facingNote || '');
+      if(m) SURVEY.facingNote = m[1];
+      delete SURVEY.flipped;
+    }
+  }
+  render();
+}
+document.getElementById('flipdir').onclick = flipSection;
+function syncFacingUI(){
+  const el = document.getElementById('facinginfo'); if(!el) return;
+  const f = SURVEY && SURVEY.facing;
+  el.textContent = f ? `斷面方向：${f}${SURVEY.facingNote ? '・' + SURVEY.facingNote : ''}` : '';
+}
+
+/* ═══ 上一步／下一步（同一配置內的修改；切換配置、產生斷面、匯入後清空）═══
+   每次重繪後稍等片刻比對內容，有變才記一步；拖曳中不記，放開後才記成一步 */
+HIST = {undo:[], redo:[], base:null, timer:null};
+const HIST_MAX = 100;
+function histState(){
+  return JSON.stringify({total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle,
+    labelDir:LABEL_DIR, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM, survey:SURVEY,
+    customs: Object.fromEntries(Object.entries(KIND).filter(([,v])=>v.custom))});
+}
+const histBusy = () => !!(drag || dragTxt || dragStall || dragKerb || labelEditId !== null || EXPORT_MODE || suppressTable);
+const inField = () => document.body.classList.contains('mode-field');   // 現勘模式產生 JPG 時會借用繪圖，不算修改
+function histReset(){
+  if(!HIST) return;
+  clearTimeout(HIST.timer); HIST.timer = null;
+  HIST.undo = []; HIST.redo = []; HIST.base = histState(); syncUndoUI();
+}
+function histTouch(){
+  if(!HIST || HIST.base === null) return;
+  clearTimeout(HIST.timer);
+  HIST.timer = setTimeout(histCommit, 350);
+}
+function histCommit(){
+  if(!HIST || HIST.base === null) return;
+  clearTimeout(HIST.timer); HIST.timer = null;
+  if(inField()) return;
+  if(histBusy()){ HIST.timer = setTimeout(histCommit, 350); return; }
+  const cur = histState();
+  if(cur !== HIST.base){
+    HIST.undo.push(HIST.base);
+    if(HIST.undo.length > HIST_MAX) HIST.undo.shift();
+    HIST.redo = []; HIST.base = cur;
+  }
+  syncUndoUI();
+}
+function histApply(str){
+  const d = JSON.parse(str);
+  Object.keys(KIND).forEach(k=>{ if(KIND[k].custom && !(d.customs && d.customs[k])) delete KIND[k]; });
+  Object.assign(KIND, d.customs || {});
+  rebuildAddKinds();
+  total = d.total; fixTotal = d.fixTotal; roadClass = d.roadClass;
+  segs = d.segs; stalls = d.stalls; kerbColor = d.kerbColor; kerbPos = d.kerbPos; kerbMarks = d.kerbMarks;
+  drawStyle = d.drawStyle; document.getElementById('drawstyle').value = drawStyle;
+  LABEL_DIR = d.labelDir; Object.assign(TXTDY, d.txtdy);
+  Object.keys(CHECK_OVERRIDE).forEach(k=>delete CHECK_OVERRIDE[k]); Object.assign(CHECK_OVERRIDE, d.checkOv || {});
+  ICON_ZOOM = d.iconZoom; SURVEY = d.survey || null;
+  uid = Math.max(...segs.map(s=>s.id), ...stalls.map(s=>s.id), 0) + 1;
+  document.getElementById('total').value = total;
+  document.getElementById('cls').value = roadClass;
+  document.getElementById('k-color').value = kerbColor;
+  document.getElementById('k-pos').value = kerbPos;
+  syncFontUI(); settle(); syncFixUI(); render();
+}
+function histStep(from, to){
+  if(!HIST || HIST.base === null || histBusy() || inField()) return;
+  histCommit();                                   // 先把還沒記下的修改記成一步
+  if(!from.length) return;
+  to.push(HIST.base);
+  histApply(from.pop());
+  clearTimeout(HIST.timer); HIST.timer = null;
+  HIST.base = histState();
+  syncUndoUI();
+}
+const undo = () => histStep(HIST.undo, HIST.redo);
+const redo = () => histStep(HIST.redo, HIST.undo);
+function syncUndoUI(){
+  const u = document.getElementById('undo'), r = document.getElementById('redo');
+  if(u) u.disabled = !(HIST && HIST.undo.length);
+  if(r) r.disabled = !(HIST && HIST.redo.length);
+}
+document.getElementById('undo').onclick = ()=> undo();
+document.getElementById('redo').onclick = ()=> redo();
+document.addEventListener('keydown', e=>{
+  if(!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  if(document.body.classList.contains('mode-field')) return;
+  const k = e.key.toLowerCase();
+  if(k !== 'z' && k !== 'y') return;
+  const a = document.activeElement;              // 文字欄位內維持瀏覽器原本的復原
+  if(a && (a.tagName === 'TEXTAREA' || a.isContentEditable ||
+     (a.tagName === 'INPUT' && !['number','checkbox','radio','range','color','button'].includes(a.type)))) return;
+  e.preventDefault();
+  if(k === 'y' || e.shiftKey) redo(); else undo();
+});
+
 /* ═══ 點擊圖面標題直接改名（連動「配置名稱」欄位） ═══ */
 const titleInput = document.getElementById('titleedit');
 
@@ -2291,18 +2573,20 @@ titleInput.addEventListener('blur', commitTitleEdit);
 
 /* 一鍵顯示／隱藏斷面圖示（套用各斷面的預設圖示） */
 document.getElementById('toggleicons').onclick = e=>{
-  const on = segs.some(s=>s.icon);
-  if(on){
-    segs.forEach(s=> delete s.icon);
+  if(iconsVisible()){
+    SHOW_ICONS = false;                              // 隱藏：不刪除各項目的圖示設定
   } else {
-    segs.forEach(s=>{ const set = ICON_SETS[s.kind]; if(set) s.icon = set.def; });
+    SHOW_ICONS = true;
+    if(!segs.some(s=>s.icon)) applyDefaultIcons();
   }
+  saveIconPref();
   syncIconBtn();
   render();
 };
+const iconsVisible = () => SHOW_ICONS !== false && segs.some(s=>s.icon);
 function syncIconBtn(){
   const b = document.getElementById('toggleicons');
-  const on = segs.some(s=>s.icon);
+  const on = iconsVisible();
   b.classList.toggle('on', on);
   b.textContent = on ? '隱藏斷面圖示' : '顯示斷面圖示';
 }
@@ -2313,6 +2597,13 @@ document.getElementById('fs-icon').addEventListener('input', e=>{
 });
 document.getElementById('schemename').addEventListener('input', ()=> render());
 document.getElementById('drawstyle').addEventListener('change', e=>{ drawStyle = e.target.value; render(); });
+document.getElementById('labeldir').addEventListener('change', e=>{
+  LABEL_DIR[drawStyle === 'line' ? 'line' : 'color'] = e.target.value; render();
+});
+function syncLabelDirUI(){
+  const el = document.getElementById('labeldir');
+  if(el) el.value = LABEL_DIR[drawStyle === 'line' ? 'line' : 'color'] || LABEL_DIR_DEF[drawStyle === 'line' ? 'line' : 'color'];
+}
 /* 字體大小與粗體 */
 [['fs-label','label'],['fs-num','num'],['fs-total','total'],['fs-title','title']].forEach(([id,key])=>{
   document.getElementById(id).addEventListener('input', e=>{
@@ -2402,7 +2693,7 @@ document.getElementById('copy').onclick = async ()=>{
     ? '\n\n【停車格（獨立圖層，不計入總寬）】\n' + stalls.map((st,i)=>`停車格 ${i+1}\t距左緣 ${st.off.toFixed(2)} m\t寬 ${st.w.toFixed(2)} m\t${coverText(st)}`).join('\n')
     : '';
   const txt = `${CLS[roadClass].name}　全寬 ${total.toFixed(2)} m\n` +
-    segs.map(s=>`${labelOf(s)}\t${s.w.toFixed(2)} m`).join('\n') +
+    segs.map(s=>`${labelFlat(s)}\t${s.w.toFixed(2)} m`).join('\n') +
     `\n合計\t${segs.reduce((a,s)=>a+s.w,0).toFixed(2)} m` +
     (Math.abs(leftover)>0.02 ? `\n${leftover>0?'剩餘':'超出'}\t${Math.abs(leftover).toFixed(2)} m` : '') +
     stallTxt +
@@ -2493,7 +2784,7 @@ function currentSig(){
   try{
     return JSON.stringify({
       name: (document.getElementById('schemename')?.value || '').trim(),
-      total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks,
+      total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, labelDir:LABEL_DIR, survey:SURVEY,
       drawStyle, font:FONT, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM,
     });
   }catch(e){ return null; }
@@ -2512,7 +2803,7 @@ window.addEventListener('beforeunload', e=>{
 });
 
 function currentSnapshot(){
-  return {total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle,
+  return {total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle, labelDir:LABEL_DIR, survey:SURVEY || undefined,
     font:FONT, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM,
     customs: Object.fromEntries(Object.entries(KIND).filter(([,v])=>v.custom))};
 }
@@ -2588,7 +2879,14 @@ document.getElementById('impfile').onchange = e=>{
         });
         await store.write(all);
         await refreshSchemes();
-        alert(`已匯入專案「${raw.project || '未命名'}」共 ${incoming.length} 個斷面。\n請於「已儲存的配置」清單中選擇要開啟的斷面。`);
+        let fmMsg = '';
+        if(raw.type === 'road-survey' && raw.survey && typeof fmImportFromEdit === 'function'){
+          const r = await fmImportFromEdit(raw);
+          if(r.st === 'ok') fmMsg = `\n\n現勘模式也已載入這份現勘資料（${r.n} 個斷面${r.pk ? `、${r.pk} 筆供需` : ''}），切換到現勘模式即可看到。`;
+          else if(r.st === 'cancel') fmMsg = '\n\n現勘模式維持原有資料（未取代）。';
+        }
+        alert((incoming.length ? `已匯入專案「${raw.project || '未命名'}」共 ${incoming.length} 個斷面。\n請於「已儲存的配置」清單中選擇要開啟的斷面。`
+          : `專案「${raw.project || '未命名'}」沒有可放進編輯模式的斷面。`) + fmMsg);
         e.target.value = '';
         return;
       }
@@ -2616,7 +2914,10 @@ document.getElementById('impfile').onchange = e=>{
       document.getElementById('total').value = total;
       document.getElementById('cls').value = roadClass;
       fixTotal = d.fixTotal != null ? !!d.fixTotal : !d.survey;
-      settle(); syncFixUI(); render();
+      applyIconPref();
+      LABEL_DIR = Object.assign({}, LABEL_DIR_DEF, d.labelDir || {});
+      SURVEY = d.survey ? JSON.parse(JSON.stringify(d.survey)) : null;
+      settle(); syncFixUI(); render(); histReset();
     }catch(err){ alert('匯入失敗：檔案格式不正確。'); }
     e.target.value = '';
   };
@@ -2679,7 +2980,7 @@ document.getElementById('save').onclick = async ()=>{
       }
     }
     all[name] = {
-      total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle, font:FONT, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM,
+      total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle, labelDir:LABEL_DIR, survey:SURVEY || undefined, font:FONT, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM,
       customs: Object.fromEntries(Object.entries(KIND).filter(([,v])=>v.custom)),
       savedAt: new Date().toISOString(),
     };
@@ -2726,7 +3027,10 @@ async function loadScheme(name){
     document.getElementById('cls').value = roadClass;
     document.getElementById('schemename').value = name;   // 同步名稱，之後儲存會提示是否取代
     fixTotal = d.fixTotal != null ? !!d.fixTotal : !d.survey;   // 舊配置：現勘匯入者不固定，其餘固定
-    settle(); syncFixUI(); render(); markSaved();
+    applyIconPref();
+    LABEL_DIR = Object.assign({}, LABEL_DIR_DEF, d.labelDir || {});
+    SURVEY = d.survey ? JSON.parse(JSON.stringify(d.survey)) : null;
+    settle(); syncFixUI(); render(); markSaved(); histReset();
   }catch(e){ alert('載入失敗：' + (e && e.message ? e.message : e)); }
 }
 document.getElementById('schemes').addEventListener('change', e=> loadScheme(e.target.value));
@@ -2752,7 +3056,7 @@ document.getElementById('newscheme').onclick = ()=>{
 
   // 表單回預設值
   drawStyle = 'color'; document.getElementById('drawstyle').value = 'color';
-  total = 15; roadClass = 'minor'; fixTotal = true; syncFixUI();
+  total = 15; roadClass = 'minor'; fixTotal = true; syncFixUI(); LABEL_DIR = {...LABEL_DIR_DEF}; SURVEY = null;
   document.getElementById('total').value = 15;
   document.getElementById('cls').value = 'minor';
   document.getElementById('k-color').value = 'none';
@@ -2932,6 +3236,7 @@ function saveFontPref(){ try{ localStorage.setItem(FONT_KEY, JSON.stringify(FONT
 })();
 
 generate();
+histReset();
 refreshSchemes();
 </script>
 <!-- ═══════ 現勘模式 ═══════ -->
@@ -3890,8 +4195,8 @@ function sectionSVG(sec){
   const nameEl = document.getElementById('schemename');
   const saved = {total, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle, leftover,
     font: JSON.parse(JSON.stringify(FONT)), txtdy: Object.assign({}, TXTDY), iconZoom: ICON_ZOOM, name: nameEl.value,
-    lenMode: LEN_MODE, fixTotal};
-  LEN_MODE = 'fit'; fixTotal = true;                                     // 現勘 JPG 一律同樣長度，不受編輯模式「依全寬比例」影響
+    lenMode: LEN_MODE, fixTotal, labelDir: LABEL_DIR};
+  LEN_MODE = 'fit'; fixTotal = true; LABEL_DIR = {...LABEL_DIR_DEF};   // 現勘 JPG 一律同樣長度、名稱方向用預設（線條式直書），不受編輯模式設定影響
   const sc = sectionToScheme(sec);
   const wasField = document.body.classList.contains('mode-field');
   document.body.classList.remove('mode-field');          // 需可量測版面才算得出圖框；同一段同步程式內還原，畫面不會閃
@@ -3917,7 +4222,7 @@ function sectionSVG(sec){
     total = saved.total; roadClass = saved.roadClass; segs = saved.segs; stalls = saved.stalls;
     kerbColor = saved.kerbColor; kerbPos = saved.kerbPos; kerbMarks = saved.kerbMarks; drawStyle = saved.drawStyle; leftover = saved.leftover;
     Object.assign(FONT, saved.font); Object.assign(TXTDY, saved.txtdy); ICON_ZOOM = saved.iconZoom; nameEl.value = saved.name;
-    LEN_MODE = saved.lenMode; fixTotal = saved.fixTotal;
+    LEN_MODE = saved.lenMode; fixTotal = saved.fixTotal; LABEL_DIR = saved.labelDir;
     if(wasField) document.body.classList.add('mode-field');
     try{ render(); }catch(e){}
   }
@@ -4256,6 +4561,23 @@ function exportCSV(){
   download(`${date}_現勘.csv`, '﻿' + rows.map(r=>r.map(csvCell).join(',')).join('\r\n'), 'text/csv');
   toast(`已匯出 ${date}_現勘.csv`);
 }
+/* 編輯模式「匯入 JSON」匯入現勘檔時，一併放進現勘模式（原本已有資料先確認取代） */
+async function fmImportFromEdit(raw){
+  let nd = null;
+  try{ nd = normalize(raw.survey); }catch(err){ nd = null; }
+  if(!nd) return {st:'bad'};
+  const ns = exportable().length, np = pkExportable().length;
+  if(ns || np){
+    const inN = nd.sections.filter(s=>!isBlank(s)).length, inP = (nd.parking || []).filter(p=>!pkIsBlank(p)).length;
+    if(!confirm(`這個檔案也含現勘資料（${inN} 個斷面${inP ? `、${inP} 筆供需` : ''}）。\n\n現勘模式目前已有 ${ns} 個斷面${np ? `、${np} 筆供需` : ''}，要以匯入的現勘資料取代嗎？\n（按「取消」＝現勘模式維持原有資料；編輯模式的配置照常匯入）`))
+      return {st:'cancel'};
+  }
+  D = nd; D.dirtyExport = false;
+  FM.sel = null; FM.insertAt = null; FM.tab = 'sec';
+  renumber(); save();
+  try{ renderAll(); }catch(err){}
+  return {st:'ok', n: exportable().length, pk: pkExportable().length};
+}
 $('fmImp').onchange = e=>{
   const f = e.target.files[0]; if(!f) return;
   const r = new FileReader();
@@ -4267,7 +4589,7 @@ $('fmImp').onchange = e=>{
       nd = normalize(raw.survey || (raw.type === 'road-survey' ? raw : null));
     }catch(err){ nd = null; }
     if(!nd) return toast('匯入失敗：不是現勘匯出的 JSON');
-    if(exportable().length){
+    if(exportable().length || pkExportable().length){
       const ok = await ask('取代目前的現勘資料？',
         `匯入檔含 ${nd.sections.filter(s=>!isBlank(s)).length} 個斷面。目前手機內的 ${exportable().length} 個斷面將被取代（建議先匯出備份）。`,
         [{label:'取代', value:true, cls:'danger'}, {label:'取消', value:false}]);
@@ -4343,6 +4665,7 @@ function setMode(m){
   else { try{ render(); }catch(e){} }
 }
 window.setToolMode = setMode;
+window.fmImportFromEdit = fmImportFromEdit;   // 編輯模式匯入現勘檔時呼叫
 document.getElementById('toField').onclick = ()=> setMode('field');
 
 /* ═══════════════════════ 停車供需紀錄（第三階段） ═══════════════════════
