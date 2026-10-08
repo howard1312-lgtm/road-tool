@@ -76,6 +76,9 @@
   .fb-group{display:flex;align-items:center;gap:4px}
   .fb-group label{font-size:12px;color:var(--ink-soft)}
   .fontbar input[type=number]{width:52px}
+  .fixtot{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--ink-soft);white-space:nowrap;cursor:pointer;margin-left:4px}
+  .fixtot input{margin:0;cursor:pointer}
+  #total.ro{color:var(--ink-soft);background:transparent}
   .lenref{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--ink-soft)}
   .lenref[hidden]{display:none}
   .lenref input[type=number]{width:58px}
@@ -437,6 +440,7 @@ body.mode-field .wrap{display:none}
         <label for="total">道路全寬</label>
         <input id="total" type="number" step="0.1" min="2" value="15">
         <span class="unit">m</span>
+        <label class="fixtot" title="勾選＝全寬固定，增減或修改項目只顯示剩餘／超出；不勾選＝全寬自動等於各項加總"><input type="checkbox" id="fixtotal" checked>固定全寬</label>
       </div>
     </div>
   </header>
@@ -678,6 +682,28 @@ const round2 = v => Math.round(v*100)/100;
 const clamp = (v,a,b) => Math.min(b, Math.max(a,v));
 
 let total = 15, roadClass = 'minor', segs = [], leftover = 0, uid = 1;
+/* 固定全寬（每個配置各自保存）：
+   開＝全寬為輸入值，新增／修改／刪除項目都不自動調整其他項目，只顯示剩餘或超出多少（拖曳分隔線仍維持全寬）
+   關＝全寬＝各項加總，隨項目即時更新 */
+let fixTotal = true;
+const segSum = () => round2(segs.reduce((a,s)=>a+s.w,0));
+function settle(){
+  if(!fixTotal && segs.length){
+    total = segSum();
+    const el = document.getElementById('total');
+    if(el) el.value = total;
+  }
+  leftover = round2(total - segSum());
+}
+function syncFixUI(){
+  const cb = document.getElementById('fixtotal'), el = document.getElementById('total');
+  if(!cb || !el) return;
+  cb.checked = fixTotal;
+  el.readOnly = !fixTotal;
+  el.classList.toggle('ro', !fixTotal);
+  el.title = fixTotal ? '固定全寬：改項目寬度時不自動調整其他項目，只顯示剩餘／超出' : '不固定全寬：全寬＝各項加總（自動計算）';
+  if(!fixTotal) el.value = total;
+}
 let stalls = [];                    // 停車格圖層 {id, off(距左緣 m), w}
 let drawStyle = 'color';                    // 'color' 彩色圖塊／'line' 線條式
 /* 字體設定：名稱／數字／全寬標題，可各自設定大小與粗體 */
@@ -940,6 +966,7 @@ function assignLaneDirections(){
 }
 
 function generate(){
+  fixTotal = true; syncFixUI();                     // 「產生斷面」依輸入的全寬配置，固定全寬
   const v = id => parseFloat(document.getElementById(id).value)||0;
   const n = id => parseInt(document.getElementById(id).value)||0;
   const slack = document.getElementById('g-slack').value;
@@ -1233,6 +1260,12 @@ function renderLineStyle(){
     parts.push(`<line x1="${x}" y1="${RULE_Y-TICK_UP}" x2="${x}" y2="${RULE_Y}" stroke="#B4462F" stroke-width="1.2" stroke-dasharray="3 3"/>`);
     if(w > 30) parts.push(`<text x="${x+w/2}" y="${NUM_Y}" text-anchor="middle" font-family="Noto Sans TC" font-size="${NUM_SIZE}" fill="#B4462F">${leftover.toFixed(LINE_DEC)}</text>`);
   }
+  if(leftover < -0.02 && !EXPORT_MODE){
+    parts.push(`<line x1="${SP.x1}" y1="${RULE_Y}" x2="${x}" y2="${RULE_Y}" stroke="#B4462F" stroke-width="1.6" stroke-dasharray="5 3"/>
+      <line x1="${x}" y1="${RULE_Y-TICK_UP}" x2="${x}" y2="${RULE_Y+8}" stroke="#B4462F" stroke-width="1.4"/>`);
+    parts.push(`<line x1="${SP.x1}" y1="${RULE_Y-TICK_UP-14}" x2="${SP.x1}" y2="${RULE_Y+14}" stroke="#B4462F" stroke-width="2" stroke-dasharray="5 3"/>
+      <text x="${SP.x1+6}" y="${RULE_Y-TICK_UP-4}" font-family="Noto Sans TC" font-size="${NUM_SIZE}" font-weight="700" fill="#B4462F">超出 ${(-leftover).toFixed(LINE_DEC)}</text>`);
+  }
 
   if(snapGuide){
     const gy = snapGuide.kind === 'label'
@@ -1292,6 +1325,7 @@ function fitViewBox(){
 const svg = document.getElementById('draw');
 
 function render(){
+  if(!fixTotal) settle();
   if(drawStyle === 'line') return renderLineStyle();
   const SP = span(), scale = SP.scale;
   let x = SP.x0, parts=[], dims=[], grabs=[], overlayLine=[], narrowRow = 0;
@@ -1493,6 +1527,10 @@ function render(){
       <line x1="0" y1="0" x2="0" y2="7" stroke="#B4462F" stroke-width="2" opacity=".5"/></pattern></defs>
       <rect x="${x}" y="${GROUND_Y}" width="${w}" height="34" fill="url(#hatch)" stroke="#B4462F" stroke-dasharray="3 3"/>`);
     if(w>60) parts.push(`<text x="${x+w/2}" y="${GROUND_Y+24}" text-anchor="middle" font-size="${FONT.label.size}" font-family="Noto Sans TC" fill="#B4462F">未配置</text>`);
+  }
+  if(leftover < -0.02 && !EXPORT_MODE){             // 固定全寬時超出：在全寬終點畫紅線並標示超出多少
+    parts.push(`<line x1="${SP.x1}" y1="${SKY-30}" x2="${SP.x1}" y2="${GROUND_Y+46}" stroke="#B4462F" stroke-width="2" stroke-dasharray="6 4"/>
+      <text x="${SP.x1+6}" y="${GROUND_Y+60}" font-family="Noto Sans TC" font-size="${FONT.num.size}" font-weight="700" fill="#B4462F">超出 ${(-leftover).toFixed(2)} m</text>`);
   }
 
   parts.push(`<g stroke="#17211F" stroke-width="1.2">
@@ -1820,6 +1858,7 @@ function renderTable(){
 
   const st = document.getElementById('status');
   if(!segs.length){ st.textContent='—'; st.className='status'; }
+  else if(!fixTotal){ st.textContent=`全寬＝各項加總 ${total.toFixed(2)} m`; st.className='status ok'; }
   else if(Math.abs(leftover)<0.02){ st.textContent='✓ 全寬剛好用滿'; st.className='status ok'; }
   else if(leftover>0){ st.textContent=`剩餘 ${leftover.toFixed(2)} m 未配置`; st.className='status warn'; }
   else { st.textContent=`超出 ${Math.abs(leftover).toFixed(2)} m`; st.className='status warn'; }
@@ -1883,7 +1922,7 @@ function renderTable(){
   tb.querySelectorAll('[data-w]').forEach(inp=> inp.onchange = e=>{
     const s = segs.find(s=>s.id==e.target.dataset.w);
     s.w = clamp(round2(parseFloat(e.target.value)||0), HARD_MIN, HARD_MAX);
-    fit(s.id); render();
+    settle(); render();
   });
   tb.querySelectorAll('[data-icon]').forEach(sel=> sel.onchange = e=>{
     const s = segs.find(s=>s.id==e.target.dataset.icon);
@@ -1903,7 +1942,7 @@ function renderTable(){
     s.shape = SHAPES[(SHAPES.indexOf(shapeOf(s)) + 1) % SHAPES.length];
     render(); });
   tb.querySelectorAll('[data-lock]').forEach(b=> b.onclick = ()=>{
-    const s = segs.find(s=>s.id==b.dataset.lock); s.locked=!s.locked; fit(); render(); });
+    const s = segs.find(s=>s.id==b.dataset.lock); s.locked=!s.locked; settle(); render(); });
   tb.querySelectorAll('[data-cw]').forEach(inp=> inp.onchange = e=>{
     const s = segs.find(s=>s.id==e.target.dataset.cw); if(!s) return;
     const v = parseFloat(e.target.value);
@@ -1922,7 +1961,7 @@ function renderTable(){
     if(e.target.value) s.ditchSide = e.target.value; else delete s.ditchSide;
     render(); });
   tb.querySelectorAll('[data-del]').forEach(b=> b.onclick = ()=>{
-    segs = segs.filter(s=>s.id!=b.dataset.del); fit(); render(); });
+    segs = segs.filter(s=>s.id!=b.dataset.del); settle(); render(); });
   tb.querySelectorAll('[data-mv]').forEach(b=> b.onclick = ()=>{
     const [i,d]=b.dataset.mv.split(':').map(Number), j=i+d;
     if(j<0||j>=segs.length) return;
@@ -1957,7 +1996,7 @@ document.getElementById('locktoggle').onclick = ()=>{
   if(!segs.length) return;
   const allLocked = segs.every(s=>s.locked);
   segs.forEach(s=> s.locked = !allLocked);
-  if(allLocked) fit();                 // 解鎖後重新吸收餘寬
+  settle();
   render();
 };
 function syncLockBtn(){
@@ -2190,11 +2229,17 @@ function renderChecks(){
 
 /* ═══════ 事件 ═══════ */
 document.getElementById('total').addEventListener('input', e=>{
-  total = Math.max(2, parseFloat(e.target.value)||0); fit(); render(); });
+  if(!fixTotal) return;
+  total = Math.max(2, parseFloat(e.target.value)||0); settle(); render(); });
+document.getElementById('fixtotal').addEventListener('change', e=>{
+  fixTotal = e.target.checked;
+  if(fixTotal){ total = segs.length ? segSum() : total; document.getElementById('total').value = total; }
+  settle(); syncFixUI(); render();
+});
 document.getElementById('cls').addEventListener('change', e=>{
   roadClass = e.target.value;
   document.getElementById('g-lanew').value = CLS[roadClass].lane;
-  fit(); render(); });
+  settle(); render(); });
 document.getElementById('k-color').addEventListener('change', e=>{ kerbColor = e.target.value; render(); });
 document.getElementById('k-pos').addEventListener('change', e=>{
   const prev = kerbMarks.slice();
@@ -2331,7 +2376,7 @@ document.getElementById('add').onclick = ()=>{
   segs.push({id: uid++, kind: k, w: round2(w), locked: true});
   document.getElementById('addw').value = '';
   addSel.value = k; custFields.hidden = true;
-  fit(); render();
+  settle(); render();
 };
 
 const PRESETS = [
@@ -2448,7 +2493,7 @@ function currentSig(){
   try{
     return JSON.stringify({
       name: (document.getElementById('schemename')?.value || '').trim(),
-      total, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks,
+      total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks,
       drawStyle, font:FONT, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM,
     });
   }catch(e){ return null; }
@@ -2467,7 +2512,7 @@ window.addEventListener('beforeunload', e=>{
 });
 
 function currentSnapshot(){
-  return {total, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle,
+  return {total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle,
     font:FONT, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM,
     customs: Object.fromEntries(Object.entries(KIND).filter(([,v])=>v.custom))};
 }
@@ -2570,7 +2615,8 @@ document.getElementById('impfile').onchange = e=>{
       uid = Math.max(...segs.map(s=>s.id), ...stalls.map(s=>s.id), 0) + 1;
       document.getElementById('total').value = total;
       document.getElementById('cls').value = roadClass;
-      fit(); render();
+      fixTotal = d.fixTotal != null ? !!d.fixTotal : !d.survey;
+      settle(); syncFixUI(); render();
     }catch(err){ alert('匯入失敗：檔案格式不正確。'); }
     e.target.value = '';
   };
@@ -2633,7 +2679,7 @@ document.getElementById('save').onclick = async ()=>{
       }
     }
     all[name] = {
-      total, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle, font:FONT, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM,
+      total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle, font:FONT, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM,
       customs: Object.fromEntries(Object.entries(KIND).filter(([,v])=>v.custom)),
       savedAt: new Date().toISOString(),
     };
@@ -2679,7 +2725,8 @@ async function loadScheme(name){
     document.getElementById('total').value = total;
     document.getElementById('cls').value = roadClass;
     document.getElementById('schemename').value = name;   // 同步名稱，之後儲存會提示是否取代
-    fit(); render(); markSaved();
+    fixTotal = d.fixTotal != null ? !!d.fixTotal : !d.survey;   // 舊配置：現勘匯入者不固定，其餘固定
+    settle(); syncFixUI(); render(); markSaved();
   }catch(e){ alert('載入失敗：' + (e && e.message ? e.message : e)); }
 }
 document.getElementById('schemes').addEventListener('change', e=> loadScheme(e.target.value));
@@ -2705,7 +2752,7 @@ document.getElementById('newscheme').onclick = ()=>{
 
   // 表單回預設值
   drawStyle = 'color'; document.getElementById('drawstyle').value = 'color';
-  total = 15; roadClass = 'minor';
+  total = 15; roadClass = 'minor'; fixTotal = true; syncFixUI();
   document.getElementById('total').value = 15;
   document.getElementById('cls').value = 'minor';
   document.getElementById('k-color').value = 'none';
@@ -3843,8 +3890,8 @@ function sectionSVG(sec){
   const nameEl = document.getElementById('schemename');
   const saved = {total, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle, leftover,
     font: JSON.parse(JSON.stringify(FONT)), txtdy: Object.assign({}, TXTDY), iconZoom: ICON_ZOOM, name: nameEl.value,
-    lenMode: LEN_MODE};
-  LEN_MODE = 'fit';                                     // 現勘 JPG 一律同樣長度，不受編輯模式「依全寬比例」影響
+    lenMode: LEN_MODE, fixTotal};
+  LEN_MODE = 'fit'; fixTotal = true;                                     // 現勘 JPG 一律同樣長度，不受編輯模式「依全寬比例」影響
   const sc = sectionToScheme(sec);
   const wasField = document.body.classList.contains('mode-field');
   document.body.classList.remove('mode-field');          // 需可量測版面才算得出圖框；同一段同步程式內還原，畫面不會閃
@@ -3870,7 +3917,7 @@ function sectionSVG(sec){
     total = saved.total; roadClass = saved.roadClass; segs = saved.segs; stalls = saved.stalls;
     kerbColor = saved.kerbColor; kerbPos = saved.kerbPos; kerbMarks = saved.kerbMarks; drawStyle = saved.drawStyle; leftover = saved.leftover;
     Object.assign(FONT, saved.font); Object.assign(TXTDY, saved.txtdy); ICON_ZOOM = saved.iconZoom; nameEl.value = saved.name;
-    LEN_MODE = saved.lenMode;
+    LEN_MODE = saved.lenMode; fixTotal = saved.fixTotal;
     if(wasField) document.body.classList.add('mode-field');
     try{ render(); }catch(e){}
   }
@@ -4139,7 +4186,7 @@ function sectionToScheme(s){
     return g;
   });
   return {
-    total: round2(segs.reduce((a,x)=>a+x.w, 0)), roadClass:'minor', segs, stalls:[],
+    total: round2(segs.reduce((a,x)=>a+x.w, 0)), fixTotal:false, roadClass:'minor', segs, stalls:[],
     kerbColor:'none', kerbPos:'ditch', kerbMarks:[], drawStyle:'color',
     font:{label:{size:18,bold:false}, num:{size:18,bold:false}, total:{size:21,bold:true}, title:{size:26,bold:true}},
     txtdy:{label:0, num:0}, checkOv:{}, iconZoom:1, customs:{},
