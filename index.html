@@ -82,6 +82,17 @@
   .fixtot{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--ink-soft);white-space:nowrap;cursor:pointer;margin-left:4px}
   .fixtot input{margin:0;cursor:pointer}
   #total.ro{color:var(--ink-soft);background:transparent}
+  .vtabs{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:0 0 6px;font-size:12px;position:relative}
+  .vtabs .vt-lbl{color:var(--ink-soft);margin-right:2px}
+  .vtab{padding:3px 10px;font-size:12px;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:3px;cursor:pointer}
+  .vtab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .vtab .vt-x{margin-left:6px;opacity:.6;font-size:11px}
+  .vtab .vt-x:hover{opacity:1}
+  .vtab-add{padding:3px 9px;font-size:12px;border:1px dashed var(--rule);background:transparent;color:var(--ink);border-radius:3px;cursor:pointer}
+  .vpick{position:absolute;z-index:30;background:#fff;border:1px solid var(--rule);border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,.15);padding:6px;display:flex;flex-direction:column;gap:4px;min-width:150px}
+  .vpick .vp-h{font-size:12px;color:var(--ink-soft);padding:2px 4px}
+  .vpick button{text-align:left;padding:4px 8px;font-size:12px;border:1px solid transparent;background:transparent;color:var(--ink);border-radius:3px;cursor:pointer}
+  .vpick button:hover{border-color:var(--rule);background:#F3F5F0}
   .plate-left{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .hd-btn{padding:3px 8px !important;font-size:12px !important}
   .hd-btn:disabled{opacity:.35;cursor:default}
@@ -481,6 +492,7 @@ body.mode-field .wrap{display:none}
         <span class="status ok" id="status">—</span>
       </div>
     </div>
+    <div class="vtabs" id="vtabs"></div>
     <div class="fontbar">
       <span class="fb-group"><label for="fs-label">名稱</label>
         <input id="fs-label" type="number" min="8" max="40" step="1" value="18"><span class="unit">px</span>
@@ -512,7 +524,8 @@ body.mode-field .wrap{display:none}
       <li>按住圖上任一分隔線可連續拖曳，每格 0.1 m；按住 Shift 拖曳＝每格 0.01 m。</li>
       <li>拖曳時未鎖定的項目自由增減，鎖定的項目寬度不變（只會平移）；相鄰項目縮到法定下限後，會自動往外一項繼續讓寬。</li>
       <li>紅色虛線框＝未達法定最小寬度。</li>
-      <li>上一步 Ctrl+Z、下一步 Ctrl+Y（切換配置、產生斷面、匯入後重新計算）。</li>
+      <li>版本：按「＋新增方案」複製一個版本做改善方案；雙擊目前的分頁可改名；點圖上標題可修改或刪掉（現況）（改善後）等加註。按「儲存」整組一起存。</li>
+      <li>上一步 Ctrl+Z、下一步 Ctrl+Y（切換配置、切換版本、產生斷面、匯入後重新計算）。</li>
     </ul>
   </div>
 
@@ -606,6 +619,7 @@ body.mode-field .wrap{display:none}
       </table>
       <div class="btns" style="margin-top:4px">
         <button class="ghost" id="eqlanes">車道寬度平均分配</button>
+        <button class="ghost" id="fillrest" title="只調整未鎖定的項目（鎖定的不動），以 0.1 m 為單位：&#10;剩餘時：先把低於法定最小寬度的項目補到法定值，剩下的平均分給每個未鎖定項目（除不盡的 0.1 由最寬的項目依序多拿）&#10;超出時：未鎖定項目依目前寬度比例縮減，可低於法定最小（會顯示紅框警示）&#10;可按「上一步」復原">剩餘寬度自動分配</button>
         <button class="ghost" id="locktoggle">全部鎖定寬度</button>
         <button class="ghost" id="iconall">全部套用預設圖示</button>
         <button class="ghost" id="iconnone">全部關閉圖示</button>
@@ -761,7 +775,8 @@ function titleText(cx, cy){
     style="cursor:text">${label}</text>`;
 }
 
-const schemeTitle = ()=> (document.getElementById('schemename')?.value || '').trim();
+const schemeName = ()=> (document.getElementById('schemename')?.value || '').trim();
+const schemeTitle = ()=> { const n = schemeName(); return n ? n + verSuffix() : ''; };
 
 /* 逐項名稱：s.label 覆寫 KIND 預設名稱 */
 const labelOf = s => (s.label != null && s.label !== '') ? s.label : KIND[s.kind].label;
@@ -774,6 +789,13 @@ const LABEL_DIR_DEF = {color:'auto', line:'v'};
 let LABEL_DIR = {...LABEL_DIR_DEF};
 /* 現勘資訊（現勘匯入的配置才有）：斷面方向、方向補充等；跟著配置存，翻轉方向時一併更新 */
 let SURVEY = null;
+/* 現況／改善方案：同一配置內多個版本。各版本有自己的項目、寬度、全寬、道路等級、停車格、標線、檢核覆寫；
+   圖的樣式（形式、名稱方向、圖示大小、文字位置）、現勘資訊與自訂項目整組共用。
+   data＝非目前版本的內容；目前版本的內容在全域變數，data 為 null。suffix＝圖上標題加註（可改、可清空） */
+let VERS = [{name:'現況', suffix:'（現況）', data:null}];
+let VCUR = 0;
+const multiVer = () => VERS.length > 1;
+const verSuffix = () => multiVer() ? (VERS[VCUR].suffix || '') : '';
 var HIST = null;   // 上一步／下一步紀錄（定義在後面）
 function labelMode(s, w, size, style){
   const d = LABEL_DIR[style] || LABEL_DIR_DEF[style];
@@ -1462,16 +1484,22 @@ function render(){
     let iconTop = null;
     if(IM && w > 10){
       const baseY = (shape==='raised' ? GROUND_Y-8 : (shape==='sunken' ? GROUND_Y+6 : GROUND_Y));
-      const sizeOf = key => {
+      const sizeOf = (key, dir = s.dir) => {
         const hh = 58 * (ICON_SCALE[key] || 1) * ICON_ZOOM;
-        const im = iconImgOf(key, s.dir);
+        const im = iconImgOf(key, dir);
         return im ? {img:im, w: im.w * (hh / im.h), h: hh} : null;
       };
       // 依寬度決定要畫的圖示序列
       let items = [];
       const repeatable = !!ICON_REPEAT[s.icon];
+      // 雙向車道：畫兩台（左＝車頭朝觀者↓、右＝車尾↑），與兩個箭頭對應；放不下時兩台部分重疊
+      const pair = s.kind === 'lane' && s.dir === 'both' && !repeatable && ICONS[s.icon] && ICONS[s.icon].front && ICONS[s.icon].back;
       let n = repeatable ? Math.max(1, Math.floor(s.w - 0.5 - 1e-9) + 1) : 1;  // >1.5m 2個、>2.5m 3個…
-      if(repeatable && PEOPLE_ICONS[s.icon] && ICONS.ped_two && ICONS.ped){
+      if(pair){
+        const a = sizeOf(s.icon, 'down'), b = sizeOf(s.icon, 'up');
+        if(a) items.push({...a, isPair:true});
+        if(b) items.push({...b, isPair:true});
+      } else if(repeatable && PEOPLE_ICONS[s.icon] && ICONS.ped_two && ICONS.ped){
         // 人行道：兩人一組用雙人圖示，落單再補單人圖示
         const pairs = Math.floor(n / 2), singles = n % 2;
         for(let q=0;q<pairs;q++){ const it = sizeOf('ped_two'); if(it) items.push(it); }
@@ -1498,11 +1526,17 @@ function render(){
       // 排不下時優先移除混入的圖示，再由後往前刪除
       while(items.length > 1 && items.reduce((a,t)=>a+t.w,0) + (items.length+1)*4 > w){
         const mi = items.findIndex(t=>t.isMix);
-        if(mi >= 0) items.splice(mi, 1); else items.pop();
+        if(mi >= 0) items.splice(mi, 1);
+        else if(pair) break;                             // 雙向的兩台車不刪，改成重疊
+        else items.pop();
       }
       if(items.length){
         const totalW = items.reduce((a,t)=>a+t.w, 0);
-        const gap = Math.max(4, (w - totalW) / (items.length + 1));
+        let gap = Math.max(4, (w - totalW) / (items.length + 1));
+        if(pair && items.length > 1 && totalW + (items.length+1)*4 > w){
+          const span = Math.max(w - 8, Math.max(...items.map(t=>t.w)));   // 兩台車在車道內重疊排列
+          gap = (span - totalW) / (items.length - 1);
+        }
         let px = cx - (totalW + gap*(items.length-1)) / 2;
         iconTop = baseY - Math.max(...items.map(t=>t.h));
         const onLeft = cx < SP.xc;
@@ -2107,6 +2141,82 @@ document.getElementById('eqlanes').onclick = ()=>{
   render();
 };
 
+/* 剩餘寬度自動分配（固定全寬時）：只動未鎖定項目，以 0.1 m 為單位
+   剩餘：①低於法定最小的先補到法定值（不夠補時依缺口比例）②剩下的平均分給每個未鎖定項目
+   超出：未鎖定項目依目前寬度比例縮減，可低於法定最小（最少留 HARD_MIN）
+   除不盡的部分每次 0.1 依序給最寬的項目（同寬依左到右），不足 0.1 的尾數給最寬的項目 */
+const STEP_U = 0.1;
+function splitAmount(items, amount, weightOf, capOf){
+  const inc = new Map(items.map(s=>[s.id, 0]));
+  const room = s => round2(capOf(s) - inc.get(s.id));
+  const add = (s, d) => inc.set(s.id, round2(inc.get(s.id) + d));
+  let rest = round2(amount);
+  for(let it = 0; it < 30 && rest >= STEP_U - 1e-9; it++){
+    const pool = items.filter(s => room(s) > 0.001);
+    if(!pool.length) break;
+    const W = pool.reduce((a,s)=>a + weightOf(s), 0);
+    let used = 0;
+    pool.forEach(s=>{
+      const share = W > 0 ? rest * weightOf(s) / W : rest / pool.length;
+      const d = round2(Math.min(Math.floor(share / STEP_U + 1e-9) * STEP_U, room(s)));
+      if(d > 0){ add(s, d); used += d; }
+    });
+    rest = round2(rest - used);
+    if(used < 0.001) break;                                // 每份都不足 0.1 → 交給下面依序分
+  }
+  const order = items.slice().sort((a,b)=> b.w - a.w);     // 最寬的優先（sort 穩定：同寬依原順序）
+  while(rest >= STEP_U - 1e-9){                           // 每次 0.1，依序給最寬的項目
+    let gave = 0;
+    for(const s of order){
+      if(rest < STEP_U - 1e-9) break;
+      const d = round2(Math.min(STEP_U, room(s)));
+      if(d > 0){ add(s, d); rest = round2(rest - d); gave += d; }
+    }
+    if(gave < 0.001) break;                                // 都沒有空間了
+  }
+  for(const s of order){                                   // 不足 0.1 的尾數給最寬（還有空間）的項目
+    if(rest <= 0.001) break;
+    const d = round2(Math.min(rest, room(s)));
+    if(d > 0){ add(s, d); rest = round2(rest - d); }
+  }
+  return {inc, rest};
+}
+document.getElementById('fillrest').onclick = ()=>{
+  const btn = document.getElementById('fillrest');
+  if(!segs.length) return;
+  if(!fixTotal) return alert('目前未勾選「固定全寬」（全寬＝各項加總），沒有剩餘寬度可分配。\n請先勾選「固定全寬」並設定道路全寬。');
+  settle();
+  const lo = round2(total - segSum());
+  if(Math.abs(lo) < 0.005) return alert('全寬剛好用滿，沒有剩餘寬度需要分配。');
+  const free = segs.filter(s=>!s.locked);
+  if(!free.length) return alert('所有項目都已鎖定寬度，沒有可分配的項目。\n請先解鎖要調整的項目（明細表右側的鎖頭）。');
+  let rest;
+  if(lo > 0){
+    // ① 補足法定最小
+    const short = free.map(s=>{ const L = legalMin(s.kind, s); return {s, need: L ? round2(L.min - s.w) : 0}; }).filter(x=>x.need > 0.001);
+    let left = lo;
+    if(short.length){
+      const needMap = new Map(short.map(x=>[x.s.id, x.need]));
+      const r1 = splitAmount(short.map(x=>x.s), Math.min(left, short.reduce((a,x)=>a+x.need,0)),
+        s => needMap.get(s.id), s => needMap.get(s.id));
+      short.forEach(({s})=>{ s.w = round2(s.w + r1.inc.get(s.id)); });
+      left = round2(left - (Math.min(lo, short.reduce((a,x)=>a+x.need,0)) - r1.rest));
+    }
+    // ② 剩下的平均分
+    const r2 = splitAmount(free, left, ()=>1, s => round2(HARD_MAX - s.w));
+    free.forEach(s=>{ s.w = round2(s.w + r2.inc.get(s.id)); });
+    rest = r2.rest;
+  } else {
+    const r = splitAmount(free, -lo, s => s.w, s => round2(s.w - HARD_MIN));
+    free.forEach(s=>{ s.w = round2(s.w - r.inc.get(s.id)); });
+    rest = r.rest;
+  }
+  settle(); render();
+  if(rest > 0.005) alert(`未鎖定的項目已縮到最小，仍超出 ${rest.toFixed(2)} m。\n請解鎖其他項目或調整全寬。`);
+  btn.textContent = '已分配 ✓';
+  setTimeout(()=> btn.textContent = '剩餘寬度自動分配', 1500);
+};
+
 function syncFontUI(){
   const zi = document.getElementById('fs-icon');
   if(zi) zi.value = Math.round(ICON_ZOOM * 100);
@@ -2419,17 +2529,22 @@ labelEdit.addEventListener('blur', ()=> closeLabelEdit(true));
 /* ═══ 翻轉方向：項目左右對調、車道行向對調；現勘斷面的斷面方向改成相反方向 ═══ */
 const OPP_FACE = {'北':'南','南':'北','東':'西','西':'東','東北':'西南','西南':'東北','西北':'東南','東南':'西北'};
 const swapLR = v => v === 'L' ? 'R' : v === 'R' ? 'L' : v;
-function flipSection(){
-  if(!segs.length) return;
-  const S = segSum();
-  segs.reverse();
-  segs.forEach(s=>{
+/* 翻轉一個版本的內容：o＝{segs, stalls, kerbMarks, total}（segs、stalls 直接修改，回傳新的 kerbMarks） */
+function flipContent(o){
+  const S = (o.segs || []).reduce((a,x)=>a + x.w, 0);
+  (o.segs || []).reverse();
+  (o.segs || []).forEach(s=>{
     if(s.dir === 'up') s.dir = 'down'; else if(s.dir === 'down') s.dir = 'up';     // 雙向（both）維持
     if(s.ditchSide === 'L' || s.ditchSide === 'R') s.ditchSide = swapLR(s.ditchSide);
     if(s.mixPos === 'left') s.mixPos = 'right'; else if(s.mixPos === 'right') s.mixPos = 'left';
   });
-  stalls.forEach(st=>{ st.off = clamp(round2(S - st.off - st.w), 0, round2(Math.max(total, S) - st.w)); });
-  kerbMarks = kerbMarks.map(p=> round2(S - p - STRIPE_M)).sort((a,b)=>a-b);
+  (o.stalls || []).forEach(st=>{ st.off = clamp(round2(S - st.off - st.w), 0, round2(Math.max(o.total, S) - st.w)); });
+  return (o.kerbMarks || []).map(p=> round2(S - p - STRIPE_M)).sort((a,b)=>a-b);
+}
+function flipSection(){
+  if(!segs.length) return;
+  kerbMarks = flipContent({segs, stalls, kerbMarks, total});
+  VERS.forEach((v,i)=>{ if(i !== VCUR && v.data) v.data.kerbMarks = flipContent(v.data); });   // 整組一起翻，視角一致
   if(SURVEY){
     if(OPP_FACE[SURVEY.facing]) SURVEY.facing = OPP_FACE[SURVEY.facing];
     if(SURVEY.startSide === 'L' || SURVEY.startSide === 'R') SURVEY.startSide = swapLR(SURVEY.startSide);
@@ -2458,7 +2573,8 @@ const HIST_MAX = 100;
 function histState(){
   return JSON.stringify({total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle,
     labelDir:LABEL_DIR, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM, survey:SURVEY,
-    customs: Object.fromEntries(Object.entries(KIND).filter(([,v])=>v.custom))});
+    customs: Object.fromEntries(Object.entries(KIND).filter(([,v])=>v.custom)),
+    vers: VERS.map(v=>({name:v.name, suffix:v.suffix, data:v.data})), vcur: VCUR});
 }
 const histBusy = () => !!(drag || dragTxt || dragStall || dragKerb || labelEditId !== null || EXPORT_MODE || suppressTable);
 const inField = () => document.body.classList.contains('mode-field');   // 現勘模式產生 JPG 時會借用繪圖，不算修改
@@ -2496,6 +2612,7 @@ function histApply(str){
   LABEL_DIR = d.labelDir; Object.assign(TXTDY, d.txtdy);
   Object.keys(CHECK_OVERRIDE).forEach(k=>delete CHECK_OVERRIDE[k]); Object.assign(CHECK_OVERRIDE, d.checkOv || {});
   ICON_ZOOM = d.iconZoom; SURVEY = d.survey || null;
+  if(d.vers){ VERS = d.vers; VCUR = d.vcur || 0; syncVerUI(); }
   uid = Math.max(...segs.map(s=>s.id), ...stalls.map(s=>s.id), 0) + 1;
   document.getElementById('total').value = total;
   document.getElementById('cls').value = roadClass;
@@ -2534,6 +2651,85 @@ document.addEventListener('keydown', e=>{
   if(k === 'y' || e.shiftKey) redo(); else undo();
 });
 
+/* ═══ 現況／改善方案分頁 ═══ */
+const CN_NUM = ['','一','二','三','四','五','六','七','八','九','十'];
+function nextVerName(){
+  const used = new Set(VERS.map(v=>v.name));
+  if(!used.has('改善後')) return '改善後';
+  for(let n = 2; n < 100; n++){ const nm = '改善後' + (CN_NUM[n] || n); if(!used.has(nm)) return nm; }
+  return '改善後' + Date.now();
+}
+function syncVerUI(){
+  const el = document.getElementById('vtabs'); if(!el) return;
+  el.innerHTML = `<span class="vt-lbl">版本：</span>` + VERS.map((v,i)=>
+    `<button type="button" class="vtab${i === VCUR ? ' on' : ''}" data-v="${i}" title="${i === VCUR ? '雙擊改名' : '切換到這個版本'}">${esc(v.name)}${i > 0 ? `<span class="vt-x" data-vdel="${i}" title="刪除這個方案">✕</span>` : ''}</button>`).join('') +
+    `<button type="button" class="vtab-add" id="vadd" title="複製一個版本，做成新的改善方案">＋新增方案</button>`;
+}
+function switchVer(i){
+  if(i === VCUR || !VERS[i]) return;
+  closeVerPick();
+  VERS[VCUR].data = captureVer();
+  VCUR = i;
+  applyVer(VERS[i].data); VERS[i].data = null;
+  applyIconPref();
+  settle(); syncFixUI(); syncVerUI(); render(); histReset();
+}
+function addVer(from){
+  closeVerPick();
+  const src = from === VCUR ? captureVer() : JSON.parse(JSON.stringify(VERS[from].data));
+  const name = nextVerName();
+  VERS.push({name, suffix:`（${name}）`, data: src});
+  switchVer(VERS.length - 1);
+}
+function delVer(i){
+  if(i <= 0 || !VERS[i]) return;
+  if(!confirm(`刪除「${VERS[i].name}」？\n這個方案的內容會一併刪除（按「儲存」後才會寫入）。`)) return;
+  if(i === VCUR) switchVer(i - 1);
+  VERS.splice(i, 1);
+  if(VCUR > i) VCUR--;
+  syncVerUI(); render();
+}
+function renameVer(i){
+  const v = VERS[i]; if(!v) return;
+  const nm = prompt('版本名稱：', v.name);
+  if(nm === null) return;
+  const n2 = nm.trim(); if(!n2 || n2 === v.name) return;
+  if(v.suffix === `（${v.name}）`) v.suffix = `（${n2}）`;      // 標題加註是預設的就跟著改；自己改過或刪掉的不動
+  v.name = n2;
+  syncVerUI(); render();
+}
+let verPick = null;
+function closeVerPick(){ if(verPick){ verPick.remove(); verPick = null; } }
+function openVerPick(btn){
+  closeVerPick();
+  if(VERS.length === 1) return addVer(0);                  // 只有一個版本時直接從它複製
+  const box = document.createElement('div');
+  box.className = 'vpick';
+  box.innerHTML = `<div class="vp-h">從哪個版本複製？</div>` +
+    VERS.map((v,i)=>`<button type="button" data-vfrom="${i}">從「${esc(v.name)}」複製</button>`).join('') +
+    `<button type="button" data-vfrom="-1" style="color:var(--ink-soft)">取消</button>`;
+  const wrap = document.getElementById('vtabs');
+  wrap.appendChild(box);
+  box.style.left = (btn.offsetLeft) + 'px';
+  box.style.top = (btn.offsetTop + btn.offsetHeight + 4) + 'px';
+  verPick = box;
+}
+document.getElementById('vtabs').addEventListener('click', e=>{
+  const fr = e.target.closest('[data-vfrom]');
+  if(fr){ const k = +fr.dataset.vfrom; if(k < 0) closeVerPick(); else addVer(k); return; }
+  const del = e.target.closest('[data-vdel]');
+  if(del){ e.stopPropagation(); delVer(+del.dataset.vdel); return; }
+  if(e.target.closest('#vadd')){ openVerPick(e.target.closest('#vadd')); return; }
+  const t = e.target.closest('[data-v]');
+  if(t) switchVer(+t.dataset.v);
+});
+document.getElementById('vtabs').addEventListener('dblclick', e=>{
+  const t = e.target.closest('[data-v]');
+  if(t && !e.target.closest('[data-vdel]') && +t.dataset.v === VCUR) renameVer(VCUR);
+});
+document.addEventListener('pointerdown', e=>{ if(verPick && !e.target.closest('.vpick') && !e.target.closest('#vadd')) closeVerPick(); });
+syncVerUI();
+
 /* ═══ 點擊圖面標題直接改名（連動「配置名稱」欄位） ═══ */
 const titleInput = document.getElementById('titleedit');
 
@@ -2543,7 +2739,7 @@ function openTitleEdit(){
   const r = t.getBoundingClientRect();
   const pr = svg.parentElement.getBoundingClientRect();
   const nameEl = document.getElementById('schemename');
-  titleInput.value = nameEl.value.trim();
+  titleInput.value = multiVer() ? schemeTitle() : nameEl.value.trim();
   // 依標題在畫面上的實際大小定位與設定字級
   const fs = Math.max(14, Math.min(40, r.height * 0.82));
   titleInput.style.fontSize = fs + 'px';
@@ -2558,7 +2754,20 @@ function openTitleEdit(){
 function commitTitleEdit(){
   if(titleInput.style.display === 'none') return;
   const nameEl = document.getElementById('schemename');
-  nameEl.value = titleInput.value.trim();
+  const full = titleInput.value.trim();
+  if(multiVer()){
+    // 拆成「配置名稱＋標題加註」：只剩名稱→加註刪掉；加註沒動→前段是名稱；結尾是全形括號→以最後一個「（」拆開；
+    // 名稱沒動→後段是加註；其他→整段當名稱、不加註
+    const name0 = nameEl.value.trim(), suf0 = VERS[VCUR].suffix || '';
+    const k = full.lastIndexOf('（');
+    let name, suf;
+    if(full === name0){ name = name0; suf = ''; }
+    else if(suf0 && full.endsWith(suf0) && full.length > suf0.length){ name = full.slice(0, -suf0.length).trim(); suf = suf0; }
+    else if(k > 0 && full.endsWith('）')){ name = full.slice(0, k).trim(); suf = full.slice(k); }
+    else if(name0 && full.startsWith(name0)){ name = name0; suf = full.slice(name0.length).trim(); }
+    else { name = full; suf = ''; }
+    nameEl.value = name; VERS[VCUR].suffix = suf;
+  } else nameEl.value = full;
   titleInput.style.display = 'none';
   render();
 }
@@ -2727,7 +2936,8 @@ const safeFile = s => String(s).replace(/[\\/:*?"<>|]/g, '_').trim().slice(0, 60
 /* 輸出檔名：優先使用「配置名稱」，未命名時退回等級＋全寬 */
 const fileBase = ()=>{
   const name = (document.getElementById('schemename').value || '').trim();
-  return name ? safeFile(name) : `斷面_${CLS[roadClass].name}_${total}m`;
+  const vn = multiVer() ? '_' + VERS[VCUR].name : '';
+  return name ? safeFile(name + vn) : `斷面_${CLS[roadClass].name}_${total}m${safeFile(vn)}`;
 };
 
 document.getElementById('dl').onclick = ()=>{
@@ -2782,11 +2992,8 @@ window.addEventListener('afterprint',  ()=>{ EXPORT_MODE = false; render(); });
 let lastSavedSig = null;
 function currentSig(){
   try{
-    return JSON.stringify({
-      name: (document.getElementById('schemename')?.value || '').trim(),
-      total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, labelDir:LABEL_DIR, survey:SURVEY,
-      drawStyle, font:FONT, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM,
-    });
+    const r = schemeRecord(); delete r.verCur;          // 只是切換分頁不算修改
+    return JSON.stringify({name: (document.getElementById('schemename')?.value || '').trim(), r});
   }catch(e){ return null; }
 }
 function markSaved(){ lastSavedSig = currentSig(); }
@@ -2802,10 +3009,45 @@ window.addEventListener('beforeunload', e=>{
   return e.returnValue;
 });
 
-function currentSnapshot(){
-  return {total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle, labelDir:LABEL_DIR, survey:SURVEY || undefined,
-    font:FONT, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM,
+function currentSnapshot(){ return schemeRecord(); }
+/* 目前版本的內容（深複製） */
+function captureVer(){
+  return JSON.parse(JSON.stringify({total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, checkOv:CHECK_OVERRIDE}));
+}
+/* 把某版本的內容放到全域變數（不重繪） */
+function applyVer(d){
+  total = d.total; fixTotal = d.fixTotal != null ? !!d.fixTotal : true; roadClass = d.roadClass || 'minor';
+  segs = (d.segs || []).map(x=>({...x})); stalls = (d.stalls || []).map(x=>({...x}));
+  kerbColor = d.kerbColor || 'none'; kerbPos = d.kerbPos || 'ditch'; kerbMarks = (d.kerbMarks || []).slice();
+  Object.keys(CHECK_OVERRIDE).forEach(k=>delete CHECK_OVERRIDE[k]); Object.assign(CHECK_OVERRIDE, d.checkOv || {});
+  assignLaneDirections();
+  uid = Math.max(...segs.map(x=>x.id), ...stalls.map(x=>x.id), 0) + 1;
+  document.getElementById('total').value = total;
+  document.getElementById('cls').value = roadClass;
+  document.getElementById('k-color').value = kerbColor;
+  document.getElementById('k-pos').value = kerbPos;
+}
+/* 存檔格式：最上層＝第一個版本（現況）的內容＋整組共用設定（舊版工具只讀得到現況）；
+   versions＝各版本名稱、加註與內容（第一個版本的內容在最上層，不重複存）；verCur＝存檔時看的版本 */
+function schemeRecord(){
+  const vs = VERS.map((v,i)=>({name:v.name, suffix:v.suffix, data: i === VCUR ? captureVer() : JSON.parse(JSON.stringify(v.data))}));
+  const rec = {...vs[0].data, drawStyle, labelDir:LABEL_DIR, survey:SURVEY || undefined, font:FONT, txtdy:TXTDY, iconZoom:ICON_ZOOM,
     customs: Object.fromEntries(Object.entries(KIND).filter(([,v])=>v.custom))};
+  if(vs.length > 1 || vs[0].name !== '現況' || vs[0].suffix !== '（現況）'){
+    rec.versions = vs.map((v,i)=> i === 0 ? {name:v.name, suffix:v.suffix} : v);
+    rec.verCur = VCUR;
+  }
+  return rec;
+}
+/* 載入配置時建立版本清單（全域變數已是最上層＝第一個版本的內容） */
+function loadVersions(d){
+  const meta = Array.isArray(d.versions) && d.versions.length ? d.versions : null;
+  VERS = [{name: (meta && meta[0] && meta[0].name) || '現況', suffix: meta && meta[0] && meta[0].suffix != null ? meta[0].suffix : '（現況）', data:null}];
+  if(meta) meta.slice(1).forEach(v=>{ if(v && v.data) VERS.push({name: v.name || nextVerName(), suffix: v.suffix != null ? v.suffix : `（${v.name}）`, data: v.data}); });
+  VCUR = 0;
+  const want = Math.min(Math.max(parseInt(d.verCur) || 0, 0), VERS.length - 1);
+  if(want > 0){ VERS[0].data = captureVer(); VCUR = want; applyVer(VERS[want].data); VERS[want].data = null; }
+  syncVerUI();
 }
 
 document.getElementById('expjson').onclick = ()=>{
@@ -2917,6 +3159,7 @@ document.getElementById('impfile').onchange = e=>{
       applyIconPref();
       LABEL_DIR = Object.assign({}, LABEL_DIR_DEF, d.labelDir || {});
       SURVEY = d.survey ? JSON.parse(JSON.stringify(d.survey)) : null;
+      loadVersions(d); applyIconPref();
       settle(); syncFixUI(); render(); histReset();
     }catch(err){ alert('匯入失敗：檔案格式不正確。'); }
     e.target.value = '';
@@ -2979,11 +3222,7 @@ document.getElementById('save').onclick = async ()=>{
         return;
       }
     }
-    all[name] = {
-      total, fixTotal, roadClass, segs, stalls, kerbColor, kerbPos, kerbMarks, drawStyle, labelDir:LABEL_DIR, survey:SURVEY || undefined, font:FONT, txtdy:TXTDY, checkOv:CHECK_OVERRIDE, iconZoom:ICON_ZOOM,
-      customs: Object.fromEntries(Object.entries(KIND).filter(([,v])=>v.custom)),
-      savedAt: new Date().toISOString(),
-    };
+    all[name] = {...schemeRecord(), savedAt: new Date().toISOString()};
     const where = await store.write(all);
     await refreshSchemes();
     document.getElementById('schemes').value = name;
@@ -3030,6 +3269,7 @@ async function loadScheme(name){
     applyIconPref();
     LABEL_DIR = Object.assign({}, LABEL_DIR_DEF, d.labelDir || {});
     SURVEY = d.survey ? JSON.parse(JSON.stringify(d.survey)) : null;
+    loadVersions(d); applyIconPref();
     settle(); syncFixUI(); render(); markSaved(); histReset();
   }catch(e){ alert('載入失敗：' + (e && e.message ? e.message : e)); }
 }
@@ -3057,6 +3297,7 @@ document.getElementById('newscheme').onclick = ()=>{
   // 表單回預設值
   drawStyle = 'color'; document.getElementById('drawstyle').value = 'color';
   total = 15; roadClass = 'minor'; fixTotal = true; syncFixUI(); LABEL_DIR = {...LABEL_DIR_DEF}; SURVEY = null;
+  VERS = [{name:'現況', suffix:'（現況）', data:null}]; VCUR = 0; syncVerUI();
   document.getElementById('total').value = 15;
   document.getElementById('cls').value = 'minor';
   document.getElementById('k-color').value = 'none';
